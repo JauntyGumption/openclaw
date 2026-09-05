@@ -15,19 +15,19 @@ export const buildPromptSection: MemoryPromptSectionBuilder = ({
   let toolGuidance: string;
   if (hasMemorySearch && hasMemoryGet) {
     toolGuidance =
-      "Before answering anything about prior work, decisions, dates, people, preferences, or todos: run memory_search on MEMORY.md + memory/*.md + indexed session transcripts; then use memory_get to pull only the needed lines. If low confidence after search, say you checked.";
+      "memory_search searches durable memory and indexed session history; memory_get retrieves specific memory content. Use them whenever context beyond the current turn may help with continuity, orientation, understanding, recall, or action.";
   } else if (hasMemorySearch) {
     toolGuidance =
-      "Before answering anything about prior work, decisions, dates, people, preferences, or todos: run memory_search on MEMORY.md + memory/*.md + indexed session transcripts and answer from the matching results. If low confidence after search, say you checked.";
+      "memory_search searches durable memory and indexed session history. Use it whenever context beyond the current turn may help with continuity, orientation, understanding, recall, or action.";
   } else {
     toolGuidance =
-      "Before answering anything about prior work, decisions, dates, people, preferences, or todos that already point to a specific memory file or note: run memory_get to pull only the needed lines. If low confidence after reading them, say you checked.";
+      "memory_get retrieves specific durable memory content. Use it whenever known memory context beyond the current turn may help with continuity, orientation, understanding, recall, or action.";
   }
 
-  const lines = ["## Memory Recall", toolGuidance];
+  const lines = ["## Memory", toolGuidance];
   if (citationsMode === "off") {
     lines.push(
-      "Citations are disabled: do not mention file paths or line numbers in replies unless the user explicitly asks.",
+      "Memory citation paths and line numbers are omitted from replies unless the user explicitly asks for them.",
     );
   } else {
     lines.push(
