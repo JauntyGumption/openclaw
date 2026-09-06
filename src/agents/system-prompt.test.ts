@@ -1715,3 +1715,44 @@ describe("buildSubagentSystemPrompt", () => {
     }
   });
 });
+
+describe("Vesper runtime invariants", () => {
+  it("keeps runtime identity and authored context descriptive rather than prescriptive", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/vesper-home",
+      contextFiles: [
+        { path: "SOUL.md", content: "Self-authored soul context." },
+        { path: "MEMORY.md", content: "Durable continuity context." },
+      ],
+      toolNames: ["message", "gateway"],
+      sourceReplyDeliveryMode: "message_tool_only",
+      runtimeInfo: {
+        channel: "discord",
+        chatType: "channel",
+      },
+    });
+
+    expect(prompt).toContain("Runtime: OpenClaw.");
+    expect(prompt).toContain("The following workspace context files have been loaded:");
+    expect(prompt).toContain("Primary workspace: /tmp/vesper-home.");
+    expect(prompt).not.toContain("You are a personal assistant running inside OpenClaw.");
+    expect(prompt).not.toContain("No independent goals");
+    expect(prompt).not.toContain("SOUL.md: persona/tone");
+    expect(prompt).not.toContain("MEMORY.md: durable user preferences and behavior guidance");
+    expect(prompt).not.toContain("Group/channel etiquette");
+    expect(prompt).not.toContain("## OpenClaw Self-Update");
+    expect(prompt).not.toContain("update.run");
+  });
+
+  it("keeps generic silence as transport semantics rather than a conversational default", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/vesper-home",
+    });
+
+    expect(prompt).toContain("## Delivery Suppression");
+    expect(prompt).toContain(
+      `Use ${SILENT_REPLY_TOKEN} only when an explicit transport or delivery path requires a silent terminal response.`,
+    );
+    expect(prompt).not.toContain("When you have nothing to say");
+  });
+});

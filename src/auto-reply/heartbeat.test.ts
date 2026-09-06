@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
+  HEARTBEAT_PROMPT,
   HEARTBEAT_RESPONSE_TOOL_PROMPT,
   isHeartbeatContentEffectivelyEmpty,
   parseHeartbeatTasks,
@@ -347,5 +348,27 @@ tasks:
 -->
 `;
     expect(parseHeartbeatTasks(content)).toEqual([]);
+  });
+});
+
+describe("Vesper heartbeat prompt invariants", () => {
+  it("keeps heartbeat orientation open to continuity and notification choice", () => {
+    expect(HEARTBEAT_PROMPT).toContain(
+      "Read HEARTBEAT.md if it exists (workspace context). Use it as the current heartbeat context.",
+    );
+    expect(HEARTBEAT_PROMPT).toContain(
+      "Reply HEARTBEAT_OK when you choose not to send a user-visible message.",
+    );
+    expect(HEARTBEAT_PROMPT).not.toContain("Do not infer or repeat old tasks from prior chats");
+    expect(HEARTBEAT_PROMPT).not.toContain("If nothing needs attention");
+
+    expect(HEARTBEAT_RESPONSE_TOOL_PROMPT).toContain(
+      "Set notify=true with notificationText when you choose to send a message",
+    );
+    expect(HEARTBEAT_RESPONSE_TOOL_PROMPT).toContain(
+      "set notify=false when you choose not to",
+    );
+    expect(HEARTBEAT_RESPONSE_TOOL_PROMPT).not.toContain("user should be interrupted");
+    expect(HEARTBEAT_RESPONSE_TOOL_PROMPT).not.toContain("nothing needs the user's attention");
   });
 });
