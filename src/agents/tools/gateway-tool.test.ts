@@ -371,29 +371,22 @@ describe("gateway tool restart continuation", () => {
     expect(clearRestartSentinelMock).toHaveBeenCalledOnce();
   });
 
-  it("uses the runtime session for update.run continuation routing (#86742)", async () => {
+  it("does not expose the generic upstream update action", async () => {
     const tool = createGatewayTool({
       agentSessionKey: "agent:main:session-A",
       config: {},
     });
 
-    await tool.execute?.("tool-call-update", {
-      action: "update.run",
-      sessionKey: "agent:main:session-B",
-      continuationMessage: "Reply after update restart",
-      note: "Updating now",
-      restartDelayMs: 0,
-    });
-
-    expect(callGatewayToolMock).toHaveBeenCalledWith(
-      "update.run",
-      expect.objectContaining({ timeoutMs: expect.any(Number) }),
-      expect.objectContaining({
-        sessionKey: "agent:main:session-A",
-        continuationMessage: "Reply after update restart",
-        note: "Updating now",
-        restartDelayMs: 0,
+    expect(JSON.stringify(tool.parameters)).not.toContain("update.run");
+    await expect(
+      tool.execute?.("tool-call-update", {
+        action: "update.run",
       }),
+    ).rejects.toThrow("Unknown action: update.run");
+    expect(callGatewayToolMock).not.toHaveBeenCalledWith(
+      "update.run",
+      expect.anything(),
+      expect.anything(),
     );
   });
 });

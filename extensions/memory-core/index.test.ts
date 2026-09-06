@@ -44,42 +44,41 @@ describe("buildPromptSection", () => {
     expect(buildPromptSection({ availableTools: new Set() })).toStrictEqual([]);
   });
 
-  it("describes the two-step flow when both memory tools are available", () => {
+  it("describes memory as continuity context when both memory tools are available", () => {
     const result = buildPromptSection({
       availableTools: new Set(["memory_search", "memory_get"]),
     });
-    expect(result[0]).toBe("## Memory Recall");
-    expect(result[1]).toContain("run memory_search");
-    expect(result[1]).toContain("then use memory_get");
-    expect(result[1]).toContain("indexed session transcripts");
+    expect(result[0]).toBe("## Memory");
+    expect(result[1]).toContain("memory_search searches durable memory and indexed session history");
+    expect(result[1]).toContain("memory_get retrieves specific memory content");
+    expect(result[1]).toContain("continuity, orientation, understanding, recall, or action");
     expect(result).toContain(
       "Citations: include Source: <path#line> when it helps the user verify memory snippets.",
     );
     expect(result.at(-1)).toBe("");
   });
 
-  it("limits the guidance to memory_search when only search is available", () => {
+  it("describes memory_search when only search is available", () => {
     const result = buildPromptSection({ availableTools: new Set(["memory_search"]) });
-    expect(result[0]).toBe("## Memory Recall");
-    expect(result[1]).toContain("run memory_search");
-    expect(result[1]).toContain("indexed session transcripts");
-    expect(result[1]).not.toContain("then use memory_get");
+    expect(result[0]).toBe("## Memory");
+    expect(result[1]).toContain("memory_search searches durable memory and indexed session history");
+    expect(result[1]).not.toContain("memory_get retrieves");
   });
 
-  it("limits the guidance to memory_get when only get is available", () => {
+  it("describes memory_get when only get is available", () => {
     const result = buildPromptSection({ availableTools: new Set(["memory_get"]) });
-    expect(result[0]).toBe("## Memory Recall");
-    expect(result[1]).toContain("run memory_get");
-    expect(result[1]).not.toContain("run memory_search");
+    expect(result[0]).toBe("## Memory");
+    expect(result[1]).toContain("memory_get retrieves specific durable memory content");
+    expect(result[1]).not.toContain("memory_search searches");
   });
 
-  it("includes citations-off instruction when citationsMode is off", () => {
+  it("describes citation omission when citationsMode is off", () => {
     const result = buildPromptSection({
       availableTools: new Set(["memory_search"]),
       citationsMode: "off",
     });
     expect(result).toContain(
-      "Citations are disabled: do not mention file paths or line numbers in replies unless the user explicitly asks.",
+      "Memory citation paths and line numbers are omitted from replies unless the user explicitly asks for them.",
     );
   });
 });
