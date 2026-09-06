@@ -771,7 +771,7 @@ export function buildAgentSystemPrompt(params: {
     nodes: "List/describe/notify/camera/screen on paired nodes",
     cron: "Manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
     message: "Send messages and channel actions",
-    gateway: "Restart, apply config, or run updates on the running OpenClaw process",
+    gateway: "Restart or apply bounded config changes on the running OpenClaw process",
     agents_list: acpSpawnRuntimeEnabled
       ? 'List OpenClaw agent ids allowed for sessions_spawn when runtime="subagent" (not ACP harness ids)'
       : "List OpenClaw agent ids allowed for sessions_spawn",
@@ -1134,16 +1134,6 @@ export function buildAgentSystemPrompt(params: {
       ...skillsSection,
       ...skillWorkshopSection,
       ...memorySection,
-      hasGateway && !isMinimal ? "## OpenClaw Self-Update" : "",
-      hasGateway && !isMinimal
-        ? [
-            "Only explicit user request.",
-            "Before config edits/questions: `config.schema.lookup` for the exact dot path.",
-            "Actions: config.get, config.patch, config.apply, update.run. Config writes hot-reload when possible; restart when required.",
-            "After restart, OpenClaw pings the last active session automatically.",
-          ].join("\n")
-        : "",
-      hasGateway && !isMinimal ? "" : "",
       "",
       params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal
         ? "## Model Aliases"
