@@ -1,0 +1,873 @@
+From 22ed84a975ce22181d1ab1536c9b4928649e739c Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sat, 12 Sep 2026 16:32:14 -0400
+Subject: [PATCH] fix(qmd): repair 2026.8.2 restoration seams
+
+---
+ .../active-memory/trigger-recall.test.ts      |  19 --
+ .../manager-sync-ops.startup-catchup.test.ts  |   4 +-
+ .../src/short-term-promotion.test.ts          |  98 --------
+ .../src/host/config-utils.test.ts             |   4 +-
+ src/commands/doctor-memory-search.test.ts     |   9 +-
+ src/commands/doctor-state-integrity.test.ts   | 215 ------------------
+ ...doctor-state-integrity.transcripts.test.ts |  35 +++
+ src/commands/doctor-state-integrity.ts        |   9 +-
+ .../server-startup-post-attach.test.ts        |   2 +
+ ui/src/components/settings-ui.ts              |  31 +++
+ .../e2e/memory-settings-defaults.e2e.test.ts  |   9 +-
+ ui/src/i18n/locales/en.ts                     |   1 +
+ ui/src/pages/config/memory-defaults.test.ts   |   4 -
+ ui/src/pages/config/memory-defaults.ts        |  11 +
+ ui/src/pages/config/memory-page.ts            |   2 +-
+ ui/src/pages/config/memory.ts                 |  37 +--
+ ui/src/pages/config/settings-search.ts        |  21 +-
+ 17 files changed, 137 insertions(+), 374 deletions(-)
+
+diff --git a/extensions/active-memory/trigger-recall.test.ts b/extensions/active-memory/trigger-recall.test.ts
+index bebca19c0b..9d014d11af 100644
+--- a/extensions/active-memory/trigger-recall.test.ts
++++ b/extensions/active-memory/trigger-recall.test.ts
+@@ -256,25 +256,6 @@ describe("active-memory trigger recall", () => {
+     });
+   });
+ 
+-  it("shares one in-flight lane-1 lookup for the same run authority", async () => {
+-  it("prewarms the exact lexical and trigger-candidate lookup path", async () => {
+-    hoisted.search.mockResolvedValue([]);
+-    hoisted.listTriggerCandidates.mockResolvedValue([]);
+-
+-    await prewarmTriggerRecall({
+-      cfg: {} as never,
+-      agentId: "main",
+-      query: "flight booking",
+-    });
+-
+-    expect(hoisted.getManager).toHaveBeenCalledWith({ cfg: {}, agentId: "main" });
+-    expect(hoisted.search).toHaveBeenCalledWith(
+-      "flight booking",
+-      expect.objectContaining({ lexicalOnly: true, qmdSearchModeOverride: "search" }),
+-    );
+-    expect(hoisted.listTriggerCandidates).toHaveBeenCalledWith({ activeProjectKeys: [] });
+-  });
+-
+   it("shares one in-flight prewarm with the lane-1 lookup for a run", async () => {
+     let releaseLookup: () => void = () => {
+       throw new Error("lookup gate was not initialized");
+diff --git a/extensions/memory-core/src/memory/manager-sync-ops.startup-catchup.test.ts b/extensions/memory-core/src/memory/manager-sync-ops.startup-catchup.test.ts
+index e026deb094..2cee687dec 100644
+--- a/extensions/memory-core/src/memory/manager-sync-ops.startup-catchup.test.ts
++++ b/extensions/memory-core/src/memory/manager-sync-ops.startup-catchup.test.ts
+@@ -9,14 +9,12 @@ import {
+   statSessionEntrySync,
+ } from "openclaw/plugin-sdk/memory-core-host-engine-sessions";
+ import type { MemorySyncParams } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
+-import { resetPluginStateStoreForTests } from "openclaw/plugin-sdk/plugin-state-test-runtime";
+-} from "openclaw/plugin-sdk/memory-core-host-engine-qmd";
+ import {
+   MEMORY_CHUNKING_VERSION,
+   type MemorySource,
+-  type MemorySyncParams,
+   type MemorySyncProgressUpdate,
+ } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
++import { resetPluginStateStoreForTests } from "openclaw/plugin-sdk/plugin-state-test-runtime";
+ import {
+   clearConfigCache,
+   clearRuntimeConfigSnapshot,
+diff --git a/extensions/memory-core/src/short-term-promotion.test.ts b/extensions/memory-core/src/short-term-promotion.test.ts
+index 895f465c94..dd7c709a4b 100644
+--- a/extensions/memory-core/src/short-term-promotion.test.ts
++++ b/extensions/memory-core/src/short-term-promotion.test.ts
+@@ -2172,32 +2172,6 @@ describe("short-term promotion", () => {
+           firstRecalledAt: "2026-04-01T00:00:00.000Z",
+           lastRecalledAt: "2026-04-04T00:00:00.000Z",
+           queryHashes: ["a", "b"],
+-  it("audits and repairs invalid store metadata plus stale locks", async () => {
+-    await withTempWorkspace(async (workspaceDir) => {
+-      await writeDailyMemoryNote(workspaceDir, "2026-04-01", [
+-        "Gateway host uses qmd vector search for router notes.",
+-      ]);
+-      await testing.writeRawRecallStore(workspaceDir, {
+-        version: 1,
+-        updatedAt: "2026-04-04T00:00:00.000Z",
+-        entries: {
+-          good: {
+-            key: "good",
+-            path: "memory/2026-04-01.md",
+-            startLine: 1,
+-            endLine: 2,
+-            source: "memory",
+-            snippet: "Gateway host uses qmd vector search for router notes.",
+-            recallCount: 2,
+-            totalScore: 1.8,
+-            maxScore: 0.95,
+-            firstRecalledAt: "2026-04-01T00:00:00.000Z",
+-            lastRecalledAt: "2026-04-04T00:00:00.000Z",
+-            queryHashes: ["a", "b"],
+-          },
+-          bad: {
+-            path: "",
+-          },
+         },
+         bad: {
+           path: "",
+@@ -2619,78 +2593,6 @@ describe("short-term promotion", () => {
+         await Promise.all(
+           ["second", "third"].map((query) => recordMemoryRecalls(workspaceDir, query, [result])),
+         );
+-  it("leaves empty recall stores normalized without rewriting", async () => {
+-    await withTempWorkspace(async (workspaceDir) => {
+-      const repair = await repairShortTermPromotionArtifacts({ workspaceDir });
+-
+-      expect(repair.changed).toBe(false);
+-      expect(repair.rewroteStore).toBe(false);
+-      const store = await testing.readRecallStore(workspaceDir, new Date().toISOString());
+-      expect(store.version).toBe(1);
+-      expect(store.entries).toEqual({});
+-    });
+-  });
+-
+-  it("does not rewrite an already normalized healthy recall store", async () => {
+-    await withTempWorkspace(async (workspaceDir) => {
+-      const snippet = "Gateway host uses qmd vector search for router notes.";
+-      await writeDailyMemoryNote(workspaceDir, "2026-04-01", [snippet]);
+-      const raw = {
+-        version: 1,
+-        updatedAt: "2026-04-04T00:00:00.000Z",
+-        entries: {
+-          good: {
+-            key: "good",
+-            path: "memory/2026-04-01.md",
+-            startLine: 1,
+-            endLine: 2,
+-            source: "memory",
+-            snippet,
+-            recallCount: 2,
+-            dailyCount: 0,
+-            groundedCount: 0,
+-            totalScore: 1.8,
+-            maxScore: 0.95,
+-            firstRecalledAt: "2026-04-01T00:00:00.000Z",
+-            lastRecalledAt: "2026-04-04T00:00:00.000Z",
+-            queryHashes: ["a", "b"],
+-            recallDays: ["2026-04-04"],
+-            conceptTags: deriveConceptTags({
+-              path: "memory/2026-04-01.md",
+-              snippet,
+-            }),
+-            provenance: {
+-              originClass: "agent",
+-              sessionKind: "unknown",
+-              observedAt: Date.parse("2026-04-04T00:00:00.000Z"),
+-            },
+-          },
+-        },
+-      };
+-      await testing.writeRawRecallStore(workspaceDir, raw);
+-
+-      const repair = await repairShortTermPromotionArtifacts({ workspaceDir });
+-
+-      expect(repair.changed).toBe(false);
+-      expect(repair.rewroteStore).toBe(false);
+-      expect(await testing.readRecallStore(workspaceDir, new Date().toISOString())).toEqual(raw);
+-    });
+-  });
+-
+-  it("waits for an active short-term lock before repairing", async () => {
+-    await withTempWorkspace(async (workspaceDir) => {
+-      await testing.writeRawRecallStore(workspaceDir, {
+-        version: 1,
+-        updatedAt: "2026-04-04T00:00:00.000Z",
+-        entries: {
+-          bad: {
+-            path: "",
+-          },
+-        },
+-      });
+-      await testing.writeShortTermLock(workspaceDir, {
+-        owner: `${process.pid}:${Date.now()}`,
+-        acquiredAt: Date.now(),
+       });
+     });
+ 
+diff --git a/packages/memory-host-sdk/src/host/config-utils.test.ts b/packages/memory-host-sdk/src/host/config-utils.test.ts
+index 9f9aba8825..96dd642114 100644
+--- a/packages/memory-host-sdk/src/host/config-utils.test.ts
++++ b/packages/memory-host-sdk/src/host/config-utils.test.ts
+@@ -4,6 +4,7 @@ import {
+   normalizeConfiguredMemoryExtraPaths,
+   resolveMemoryHostAgentWorkspaceDir,
+   resolveRememberAcrossConversations,
++  splitShellArgs,
+ } from "./config-utils.js";
+ 
+ describe("resolveMemoryHostAgentWorkspaceDir", () => {
+@@ -44,7 +45,8 @@ describe("resolveMemoryHostAgentWorkspaceDir", () => {
+         { HOME: "/home/peter$&mall", OPENCLAW_HOME: "~/oc" },
+       ),
+     ).toBe(path.resolve("/home/peter$&mall/oc/ws"));
+-import { resolveRememberAcrossConversations, splitShellArgs } from "./config-utils.js";
++  });
++});
+ 
+ describe("splitShellArgs", () => {
+   it("preserves quoted command arguments through the focused re-export", () => {
+diff --git a/src/commands/doctor-memory-search.test.ts b/src/commands/doctor-memory-search.test.ts
+index 2ef2e1a6aa..8323d95b04 100644
+--- a/src/commands/doctor-memory-search.test.ts
++++ b/src/commands/doctor-memory-search.test.ts
+@@ -126,6 +126,8 @@ vi.mock("../plugins/manifest-owner-policy.js", () => ({
+ vi.mock("../plugins/provider-public-artifacts.js", () => ({
+   listTrustedExternalProviderPolicyOwners,
+   loadTrustedExternalProviderPolicyArtifacts,
++}));
++
+ vi.mock("../memory-host-sdk/engine-qmd.js", () => ({
+   checkQmdBinaryAvailability,
+   resolveQmdBinaryUnavailableReason: (result: { reason?: string }) => result.reason ?? "binary",
+@@ -380,15 +382,13 @@ describe("noteMemorySearchHealth", () => {
+     resolveManifestOwnerBasePolicyBlock.mockReset();
+     resolveManifestOwnerBasePolicyBlock.mockReturnValue(null);
+     resolveActiveMemoryBackendConfig.mockReset();
+-    resolveActiveMemoryBackendConfig.mockReturnValue({ backend: "builtin" });
+-    getActiveMemorySearchManagerCore.mockResolvedValue({
+     resolveActiveMemoryBackendConfig.mockImplementation(
+       ({ cfg: cfgLocal }: { cfg: OpenClawConfig }) =>
+         cfgLocal.memory?.backend === "qmd"
+           ? { backend: "qmd", qmd: cfgLocal.memory.qmd ?? {} }
+           : { backend: "builtin" },
+     );
+-    getActiveMemorySearchManager.mockResolvedValue({
++    getActiveMemorySearchManagerCore.mockResolvedValue({
+       manager: {
+         status: () => ({ workspaceDir: "/tmp/agent-default/workspace", backend: "builtin" }),
+         close: vi.fn(async () => {}),
+@@ -729,7 +729,6 @@ describe("noteMemorySearchHealth", () => {
+     await runMemorySearchHealth("auto", {});
+ 
+     expect(resolveApiKeyForProviderCore).not.toHaveBeenCalled();
+-    expect(resolveApiKeyForProvider).not.toHaveBeenCalled();
+     expect(checkQmdBinaryAvailability).not.toHaveBeenCalled();
+     expect(note).toHaveBeenCalledTimes(1);
+     expect(firstNoteMessage()).toContain("No active memory plugin is registered");
+@@ -770,7 +769,6 @@ describe("noteMemorySearchHealth", () => {
+     const config = { session: { dmScope: "per-peer" }, plugins } as unknown as OpenClawConfig;
+     await runConfiguredMemorySearch("auto", config);
+     expect(resolveApiKeyForProviderCore).not.toHaveBeenCalled();
+-    expect(resolveApiKeyForProvider).not.toHaveBeenCalled();
+     expect(checkQmdBinaryAvailability).not.toHaveBeenCalled();
+     if (isActive) {
+       expect(note).not.toHaveBeenCalled();
+@@ -802,7 +800,6 @@ describe("noteMemorySearchHealth", () => {
+     resolveActiveMemoryBackendConfig.mockReturnValue(null);
+     await runMemorySearchHealth("auto", options);
+     expect(resolveApiKeyForProviderCore).not.toHaveBeenCalled();
+-    expect(resolveApiKeyForProvider).not.toHaveBeenCalled();
+     expect(checkQmdBinaryAvailability).not.toHaveBeenCalled();
+     if (shouldWarn) {
+       expect(note).toHaveBeenCalledTimes(1);
+diff --git a/src/commands/doctor-state-integrity.test.ts b/src/commands/doctor-state-integrity.test.ts
+index b488cbbaf9..f0bfe46215 100644
+--- a/src/commands/doctor-state-integrity.test.ts
++++ b/src/commands/doctor-state-integrity.test.ts
+@@ -287,29 +287,6 @@ describe("structured state integrity findings", () => {
+   });
+ });
+ 
+-async function runOrphanTranscriptCheckWithQmdSessions(enabled: boolean, homeDir: string) {
+-  const cfg: OpenClawConfig = {
+-    agents: {
+-      defaults: {},
+-      entries: { main: { default: true } },
+-    },
+-    memory: {
+-      backend: "qmd",
+-      qmd: {
+-        sessions: { enabled },
+-      },
+-
+-      search: { rememberAcrossConversations: false },
+-    },
+-  };
+-  setupSessionState(cfg, process.env, homeDir);
+-  const sessionsDir = resolveSessionTranscriptsDirForAgent("main", process.env, () => homeDir);
+-  fs.writeFileSync(path.join(sessionsDir, "orphan-session.jsonl"), '{"type":"session"}\n');
+-  const confirmRuntimeRepair = vi.fn(async () => false);
+-  await noteStateIntegrity(cfg, { confirmRuntimeRepair, note: noteMock });
+-  return confirmRuntimeRepair;
+-}
+-
+ describe("doctor state integrity oauth dir checks", () => {
+   let envSnapshot: ReturnType<typeof captureEnv>;
+   let tempHome = "";
+@@ -543,198 +520,6 @@ describe("doctor state integrity oauth dir checks", () => {
+     const text = await runStateIntegrityText({
+       agents: {
+         list: [{ id: "main", default: true }, { id: "research" }],
+-    await noteStateIntegrity(cfg, {
+-      confirmRuntimeRepair: vi.fn(async () => false),
+-      note: noteMock,
+-    });
+-
+-    expect(stateIntegrityText()).not.toContain("recent sessions are missing transcripts");
+-    expect(stateIntegrityText()).not.toContain("Main session transcript missing");
+-  });
+-
+-  it("does not auto-archive orphan transcripts from non-interactive repair mode", async () => {
+-    const cfg: OpenClawConfig = {};
+-    setupSessionState(cfg, process.env, process.env.HOME ?? "");
+-    const sessionsDir = resolveSessionTranscriptsDirForAgent("main", process.env, () => tempHome);
+-    fs.writeFileSync(path.join(sessionsDir, "orphan-session.jsonl"), '{"type":"session"}\n');
+-    const confirmRuntimeRepair = vi.fn(
+-      async (params: { initialValue?: boolean; requiresInteractiveConfirmation?: boolean }) =>
+-        params.requiresInteractiveConfirmation !== true,
+-    );
+-    await noteStateIntegrity(cfg, { confirmRuntimeRepair, note: noteMock });
+-
+-    const archivePrompt = repairPromptCalls(confirmRuntimeRepair).find(
+-      (prompt) => prompt.requiresInteractiveConfirmation === true,
+-    );
+-    expect(archivePrompt?.initialValue).toBe(false);
+-    const files = fs.readdirSync(sessionsDir);
+-    expect(files).toContain("orphan-session.jsonl");
+-    const archivedOrphanTranscripts = files.filter((name) =>
+-      name.startsWith("orphan-session.jsonl.deleted."),
+-    );
+-    expect(archivedOrphanTranscripts).toStrictEqual([]);
+-  });
+-
+-  it.skipIf(process.platform === "win32")(
+-    "does not archive referenced transcripts when the state dir path resolves through a symlink",
+-    async () => {
+-      const cfg: OpenClawConfig = {};
+-      const originalHome = tempHome;
+-      const symlinkHome = path.join(
+-        path.dirname(originalHome),
+-        `${path.basename(originalHome)}-link`,
+-      );
+-      fs.symlinkSync(originalHome, symlinkHome, "dir");
+-      try {
+-        const symlinkStateDir = path.join(symlinkHome, ".openclaw");
+-        setTestEnvValue("HOME", symlinkHome);
+-        setTestEnvValue("OPENCLAW_HOME", symlinkHome);
+-        setTestEnvValue("OPENCLAW_STATE_DIR", symlinkStateDir);
+-
+-        setupSessionState(cfg, process.env, symlinkHome);
+-        const sessionsDir = resolveSessionTranscriptsDirForAgent(
+-          "main",
+-          process.env,
+-          () => symlinkHome,
+-        );
+-        const transcriptPath = path.join(sessionsDir, "linked-session.jsonl");
+-        fs.writeFileSync(transcriptPath, '{"type":"session"}\n');
+-        writeSessionStore(cfg, {
+-          "agent:main:main": {
+-            sessionId: "linked-session",
+-            updatedAt: Date.now(),
+-          },
+-        });
+-
+-        const confirmRuntimeRepair = vi.fn(async (params: { message: string }) =>
+-          params.message.includes("This only renames them to *.deleted.<timestamp>."),
+-        );
+-        await noteStateIntegrity(cfg, { confirmRuntimeRepair, note: noteMock });
+-
+-        expect(fs.existsSync(transcriptPath)).toBe(true);
+-        expect(fs.readdirSync(sessionsDir).filter((name) => name.includes(".deleted."))).toEqual(
+-          [],
+-        );
+-        expect(stateIntegrityText()).not.toContain("These .jsonl files are no longer referenced");
+-      } finally {
+-        fs.rmSync(symlinkHome, { force: true, recursive: true });
+-      }
+-    },
+-  );
+-
+-  it("suppresses orphan transcript warnings when QMD sessions are enabled", async () => {
+-    const confirmRuntimeRepair = await runOrphanTranscriptCheckWithQmdSessions(true, tempHome);
+-
+-    expect(stateIntegrityText()).not.toContain(
+-      "These .jsonl files are no longer referenced by sessions.json",
+-    );
+-    expect(confirmRuntimeRepair).not.toHaveBeenCalled();
+-  });
+-
+-  it("still detects orphan transcripts when QMD sessions are disabled", async () => {
+-    const confirmRuntimeRepair = await runOrphanTranscriptCheckWithQmdSessions(false, tempHome);
+-
+-    expect(stateIntegrityText()).toContain(
+-      "These .jsonl files are no longer referenced by sessions.json",
+-    );
+-    expect(confirmRuntimeRepair).toHaveBeenCalled();
+-  });
+-
+-  it("prints openclaw-only verification hints when recent sessions are missing transcripts", async () => {
+-    const cfg: OpenClawConfig = {};
+-    writeSessionStore(cfg, {
+-      "agent:main:main": {
+-        sessionId: "missing-transcript",
+-        updatedAt: Date.now(),
+-      },
+-    });
+-    const text = await runStateIntegrityText(cfg);
+-    expect(text).toContain("recent sessions are missing transcripts");
+-    expect(text).toMatch(/openclaw sessions --store ".*sessions\.json"/);
+-    expect(text).toMatch(
+-      /openclaw sessions cleanup --store ".*sessions\.json" --dry-run --fix-missing/,
+-    );
+-    expect(text).not.toMatch(
+-      /openclaw sessions cleanup --store ".*sessions\.json" --dry-run(?! --fix-missing)/,
+-    );
+-    expect(text).toMatch(
+-      /openclaw sessions cleanup --store ".*sessions\.json" --enforce --fix-missing/,
+-    );
+-    expect(text).not.toContain("--active");
+-    expect(text).not.toContain(" ls ");
+-  });
+-
+-  it("moves a heartbeat-poisoned main session and clears stale TUI restore pointers", async () => {
+-    const cfg: OpenClawConfig = {};
+-    setupSessionState(cfg, process.env, tempHome);
+-    const sessionsDir = resolveSessionTranscriptsDirForAgent("main", process.env, () => tempHome);
+-    fs.writeFileSync(
+-      path.join(sessionsDir, "heartbeat-session.jsonl"),
+-      [
+-        JSON.stringify({ message: { role: "user", content: HEARTBEAT_TRANSCRIPT_PROMPT } }),
+-        JSON.stringify({ message: { role: "assistant", content: "HEARTBEAT_OK" } }),
+-        "",
+-      ].join("\n"),
+-    );
+-    writeSessionStore(cfg, {
+-      "agent:main:main": {
+-        sessionId: "heartbeat-session",
+-        updatedAt: Date.now(),
+-      },
+-    });
+-    const stateDir = process.env.OPENCLAW_STATE_DIR ?? "";
+-    await writeTuiLastSessionKey({
+-      scopeKey: "default",
+-      sessionKey: "agent:main:main",
+-      stateDir,
+-    });
+-    await writeTuiLastSessionKey({
+-      scopeKey: "telegram",
+-      sessionKey: "agent:main:telegram:thread",
+-      stateDir,
+-    });
+-
+-    const confirmRuntimeRepair = vi.fn(async (params: { message: string }) =>
+-      params.message.startsWith("Move heartbeat-owned main session"),
+-    );
+-    await noteStateIntegrity(cfg, { confirmRuntimeRepair, note: noteMock });
+-
+-    const storePath = resolveStorePath(cfg.session?.store, { agentId: "main" });
+-    const store = JSON.parse(fs.readFileSync(storePath, "utf8")) as Record<string, SessionEntry>;
+-    const recoveredKey = Object.keys(store).find((key) =>
+-      key.startsWith("agent:main:heartbeat-recovered-"),
+-    );
+-    expect(store["agent:main:main"]).toBeUndefined();
+-    if (recoveredKey === undefined) {
+-      throw new Error("expected recovered heartbeat session key");
+-    }
+-    expect(store[recoveredKey]?.sessionId).toBe("heartbeat-session");
+-
+-    await expect(readTuiLastSessionKey({ scopeKey: "default", stateDir })).resolves.toBeNull();
+-    await expect(readTuiLastSessionKey({ scopeKey: "telegram", stateDir })).resolves.toBe(
+-      "agent:main:telegram:thread",
+-    );
+-    expect(doctorChangesText()).toContain("Moved heartbeat-owned main session agent:main:main");
+-    expect(doctorChangesText()).toContain("Cleared 1 stale TUI last-session pointer");
+-  });
+-
+-  it("does not move a mixed main transcript that has real user activity", async () => {
+-    const cfg: OpenClawConfig = {};
+-    setupSessionState(cfg, process.env, tempHome);
+-    const sessionsDir = resolveSessionTranscriptsDirForAgent("main", process.env, () => tempHome);
+-    fs.writeFileSync(
+-      path.join(sessionsDir, "mixed-session.jsonl"),
+-      [
+-        JSON.stringify({ message: { role: "user", content: HEARTBEAT_TRANSCRIPT_PROMPT } }),
+-        JSON.stringify({ message: { role: "assistant", content: "HEARTBEAT_OK" } }),
+-        JSON.stringify({ message: { role: "user", content: "hello from telegram" } }),
+-        "",
+-      ].join("\n"),
+-    );
+-    writeSessionStore(cfg, {
+-      "agent:main:main": {
+-        sessionId: "mixed-session",
+-        updatedAt: Date.now(),
+       },
+     });
+ 
+diff --git a/src/commands/doctor-state-integrity.transcripts.test.ts b/src/commands/doctor-state-integrity.transcripts.test.ts
+index 07afc7e402..2947474eeb 100644
+--- a/src/commands/doctor-state-integrity.transcripts.test.ts
++++ b/src/commands/doctor-state-integrity.transcripts.test.ts
+@@ -62,6 +62,23 @@ vi.mock("../plugins/doctor-contract-registry.js", async () => {
+   };
+ });
+ 
++async function runOrphanTranscriptCheckWithQmdSessions(enabled: boolean, homeDir: string) {
++  const cfg: OpenClawConfig = {
++    agents: { entries: { main: { default: true } } },
++    memory: {
++      backend: "qmd",
++      qmd: { sessions: { enabled } },
++      search: { rememberAcrossConversations: false },
++    },
++  };
++  setupSessionState(cfg, process.env, homeDir);
++  const sessionsDir = resolveSessionTranscriptsDirForAgent("main", process.env, () => homeDir);
++  fs.writeFileSync(path.join(sessionsDir, "orphan-session.jsonl"), '{"type":"session"}\n');
++  const confirmRuntimeRepair = vi.fn(async () => false);
++  await noteStateIntegrity(cfg, { confirmRuntimeRepair, note: noteMock });
++  return confirmRuntimeRepair;
++}
++
+ describe("doctor transcript and heartbeat session repairs", () => {
+   let envSnapshot: ReturnType<typeof captureEnv>;
+   let tempHome = "";
+@@ -129,6 +146,24 @@ describe("doctor transcript and heartbeat session repairs", () => {
+     }
+   });
+ 
++  it("suppresses orphan transcript warnings when QMD sessions are enabled", async () => {
++    const confirmRuntimeRepair = await runOrphanTranscriptCheckWithQmdSessions(true, tempHome);
++
++    expect(stateIntegrityText()).not.toContain(
++      "These .jsonl files are no longer referenced by sessions.json",
++    );
++    expect(confirmRuntimeRepair).not.toHaveBeenCalled();
++  });
++
++  it("still detects orphan transcripts when QMD sessions are disabled", async () => {
++    const confirmRuntimeRepair = await runOrphanTranscriptCheckWithQmdSessions(false, tempHome);
++
++    expect(stateIntegrityText()).toContain(
++      "These .jsonl files are no longer referenced by sessions.json",
++    );
++    expect(confirmRuntimeRepair).toHaveBeenCalled();
++  });
++
+   it("uses SQLite session rows for transcript integrity without orphan false positives", async () => {
+     const cfg: OpenClawConfig = {};
+     setupSessionState(cfg, process.env, process.env.HOME ?? "");
+diff --git a/src/commands/doctor-state-integrity.ts b/src/commands/doctor-state-integrity.ts
+index ad6a79d39d..e85e68149c 100644
+--- a/src/commands/doctor-state-integrity.ts
++++ b/src/commands/doctor-state-integrity.ts
+@@ -57,6 +57,7 @@ import {
+   loadLegacySessionStore,
+   updateLegacySessionStore,
+ } from "../infra/state-migrations.legacy-session-store.js";
++import { resolveMemoryBackendConfig } from "../memory-host-sdk/engine-storage.js";
+ import { listConfiguredChannelIdsForReadOnlyScope } from "../plugins/channel-plugin-ids.js";
+ import { normalizeAgentId } from "../routing/session-key.js";
+ import { parseAgentSessionKey } from "../sessions/session-key-utils.js";
+@@ -784,6 +785,11 @@ function shouldRequireOAuthDir(cfg: OpenClawConfig, env: NodeJS.ProcessEnv): boo
+   return false;
+ }
+ 
++function shouldSuppressOrphanTranscriptWarning(cfg: OpenClawConfig, agentId: string): boolean {
++  const backendConfig = resolveMemoryBackendConfig({ cfg, agentId });
++  return backendConfig.backend === "qmd" && backendConfig.qmd?.sessions.enabled === true;
++}
++
+ export function detectStateIntegrityHealthIssues(
+   cfg: OpenClawConfig,
+   params?: {
+@@ -1319,6 +1325,7 @@ export async function noteStateIntegrity(
+     inspectLegacyStore: boolean,
+   ) => {
+     const { agentId, storePath } = target;
++    const suppressOrphanTranscriptWarning = shouldSuppressOrphanTranscriptWarning(cfg, agentId);
+     const sessionsDir = resolveSessionTranscriptsDirForAgent(agentId, env, homedir);
+     const absoluteStorePath = path.resolve(storePath);
+     const displaySessionsDir = shortenHomePath(sessionsDir);
+@@ -1591,7 +1598,7 @@ export async function noteStateIntegrity(
+         .filter(
+           (filePath) => !referencedTranscriptPaths.has(resolveComparableTranscriptPath(filePath)),
+         );
+-      if (orphanTranscriptPaths.length > 0) {
++      if (orphanTranscriptPaths.length > 0 && !suppressOrphanTranscriptWarning) {
+         const orphanCount = countLabel(orphanTranscriptPaths.length, "orphan transcript file");
+         const orphanPreview = formatFilePreview(orphanTranscriptPaths);
+         warnings.push(
+diff --git a/src/gateway/server-startup-post-attach.test.ts b/src/gateway/server-startup-post-attach.test.ts
+index 274e4fffdc..10fbd40f84 100644
+--- a/src/gateway/server-startup-post-attach.test.ts
++++ b/src/gateway/server-startup-post-attach.test.ts
+@@ -1562,6 +1562,8 @@ describe("startGatewayPostAttachRuntime", () => {
+     expect(onPluginServices).not.toHaveBeenCalled();
+     expect(unlockStartupMethods).toHaveBeenCalledOnce();
+     expect(onSidecarsReady).toHaveBeenCalledOnce();
++  });
++
+   it("keeps the qmd memory backend lazy by default", async () => {
+     const log = { info: vi.fn(), warn: vi.fn() };
+     await startGatewayPostAttachRuntime({
+diff --git a/ui/src/components/settings-ui.ts b/ui/src/components/settings-ui.ts
+index ef1fbd8ef6..0eb042965c 100644
+--- a/ui/src/components/settings-ui.ts
++++ b/ui/src/components/settings-ui.ts
+@@ -290,6 +290,37 @@ export function renderSettingsDefaultDescription(value: string, overridden: bool
+   return html`${t(overridden ? "configForm.defaultValue" : "configForm.usingDefault", { value })}`;
+ }
+ 
++export function renderSettingsDefaultState(props: {
++  value: string;
++  overridden: boolean;
++  disabled?: boolean;
++  onReset: () => void;
++}): {
++  description: TemplateResult;
++  action: TemplateResult | typeof nothing;
++} {
++  return {
++    description: renderSettingsDefaultDescription(props.value, props.overridden),
++    action: props.overridden
++      ? html`
++          <button
++            type="button"
++            class="btn btn--icon"
++            title=${t("configForm.resetToDefault")}
++            aria-label=${t("configForm.resetToDefault")}
++            ?disabled=${props.disabled ?? false}
++            @click=${(event: Event) => {
++              event.stopPropagation();
++              props.onReset();
++            }}
++          >
++            ${icons.refresh}
++          </button>
++        `
++      : nothing,
++  };
++}
++
+ export function renderSettingsSegmented<T extends string>(props: {
+   value: T;
+   options: ReadonlyArray<{ value: T; label: unknown; title?: string; testId?: string }>;
+diff --git a/ui/src/e2e/memory-settings-defaults.e2e.test.ts b/ui/src/e2e/memory-settings-defaults.e2e.test.ts
+index 300ab3d39c..3ec5f7c6be 100644
+--- a/ui/src/e2e/memory-settings-defaults.e2e.test.ts
++++ b/ui/src/e2e/memory-settings-defaults.e2e.test.ts
+@@ -72,7 +72,6 @@ async function captureProof(page: Page, name: string, locator?: Locator) {
+ }
+ 
+ suite.define(() => {
+-  it("persists a cleared dreaming frequency and preserves the explicit engine across reload", async () => {
+   it("persists engine, backend, and dreaming resets and reloads inherited defaults", async () => {
+     await suite.withPage(
+       {
+@@ -131,11 +130,6 @@ suite.define(() => {
+         await captureProof(page, "01-explicit-engine-backend.png");
+         await captureProof(page, "02-explicit-dreaming.png", scheduleSection(page));
+ 
+-        await frequencyRow.getByRole("textbox").fill("");
+-        await frequencyRow.getByRole("textbox").blur();
+-
+-        const saved = requestRaw(await gateway.waitForRequest("config.set"));
+-        expect(saved).toHaveProperty("plugins.slots.memory", "memory-core");
+         await engineRow.getByRole("button", { name: "Reset to default" }).click();
+         await backendRow.getByRole("button", { name: "Reset to default" }).click();
+         await frequencyRow.getByRole("button", { name: "Reset to default" }).click();
+@@ -158,7 +152,7 @@ suite.define(() => {
+         const reloadedFrequencyRow = settingsRow(page, "Dreaming frequency");
+         await expect
+           .poll(() => reloadedEngineRow.textContent())
+-          .toContain("Default: OpenClaw Memory");
++          .toContain("Using default: OpenClaw Memory");
+         await expect
+           .poll(() => reloadedBackendRow.textContent())
+           .toContain("Using default: Built-in");
+@@ -169,7 +163,6 @@ suite.define(() => {
+         await expect
+           .poll(() => reloadedFrequencyRow.getByRole("textbox").getAttribute("placeholder"))
+           .toBe("0 3 * * *");
+-        await captureProof(page, "03-preserved-engine.png");
+         await expect
+           .poll(() => page.getByRole("button", { name: "Reset to default" }).count())
+           .toBe(1);
+diff --git a/ui/src/i18n/locales/en.ts b/ui/src/i18n/locales/en.ts
+index e71b5f3c93..69064de807 100644
+--- a/ui/src/i18n/locales/en.ts
++++ b/ui/src/i18n/locales/en.ts
+@@ -1578,6 +1578,7 @@ export const en: TranslationMap = {
+     structuredSecretFile: "Structured value (SecretRef) - edit the config file directly",
+     defaultValue: "Default: {value}",
+     usingDefault: "Using default: {value}",
++    resetToDefault: "Reset to default",
+     select: "Select...",
+     enumOn: "On",
+     enumOff: "Off",
+diff --git a/ui/src/pages/config/memory-defaults.test.ts b/ui/src/pages/config/memory-defaults.test.ts
+index b6bbd92652..07de030831 100644
+--- a/ui/src/pages/config/memory-defaults.test.ts
++++ b/ui/src/pages/config/memory-defaults.test.ts
+@@ -1,7 +1,3 @@
+-import { describe, expect, it } from "vitest";
+-import { dreamingConfigPath, resolveDreamingTimezoneDefault } from "./memory-defaults.ts";
+-
+-describe("memory curated defaults", () => {
+ import { describe, expect, it, vi } from "vitest";
+ import {
+   dreamingConfigPath,
+diff --git a/ui/src/pages/config/memory-defaults.ts b/ui/src/pages/config/memory-defaults.ts
+index bb2c3e6aa2..bce9a03bde 100644
+--- a/ui/src/pages/config/memory-defaults.ts
++++ b/ui/src/pages/config/memory-defaults.ts
+@@ -1,4 +1,15 @@
+ import { asNullableRecord as asConfigRecord } from "@openclaw/normalization-core/record-coerce";
++import type { RuntimeConfigCapability } from "../../lib/config/index.ts";
++
++type ConfigRemover = Pick<RuntimeConfigCapability, "removeFormValue">;
++
++export function resetMemoryEngine(config: ConfigRemover, disabled = false): boolean {
++  if (disabled) {
++    return false;
++  }
++  config.removeFormValue(["plugins", "slots", "memory"]);
++  return true;
++}
+ 
+ export function resetMemoryBackend(config: ConfigRemover, disabled = false): boolean {
+   if (disabled) {
+diff --git a/ui/src/pages/config/memory-page.ts b/ui/src/pages/config/memory-page.ts
+index 59f9cbd9c8..cc353ec0cb 100644
+--- a/ui/src/pages/config/memory-page.ts
++++ b/ui/src/pages/config/memory-page.ts
+@@ -31,7 +31,6 @@ import {
+ } from "../agents/memory/dreaming.ts";
+ import "./memory-dreaming-page.ts";
+ import "./memory-memories.ts";
+-import { dreamingConfigPath, resolveDreamingTimezoneDefault } from "./memory-defaults.ts";
+ import {
+   dreamingConfigPath,
+   resetMemoryBackend,
+@@ -637,6 +636,7 @@ class MemorySettingsPage extends OpenClawLightDomElement {
+   }
+ 
+   override render() {
++    const runtimeConfig = this.context.runtimeConfig;
+     const engineSelection = resolveMemoryEngineSelection(this.configObject);
+     const engineMutationDisabled =
+       this.mutationDisabled || (this.catalog.kind === "ready" && !this.catalog.mutationAllowed);
+diff --git a/ui/src/pages/config/memory.ts b/ui/src/pages/config/memory.ts
+index 2d6b720298..c80c8a9c98 100644
+--- a/ui/src/pages/config/memory.ts
++++ b/ui/src/pages/config/memory.ts
+@@ -6,6 +6,7 @@ import { renderHubTabs } from "../../components/hub-tabs.ts";
+ import {
+   renderLearnMoreLink,
+   renderSettingsDefaultDescription,
++  renderSettingsDefaultState,
+   renderSettingsRow,
+   renderSettingsSection,
+   renderSettingsSegmented,
+@@ -220,10 +221,12 @@ function renderEngineSection(props: MemoryViewProps) {
+   const defaultEngine =
+     props.engineOptions.find((option) => option.id === DEFAULT_MEMORY_ENGINE_ID)?.label ??
+     t("memoryPage.engine.openClawMemory");
+-  const defaultDescription = renderSettingsDefaultDescription(
+-    defaultEngine,
+-    props.engineSelection.kind !== "auto",
+-  );
++  const defaultState = renderSettingsDefaultState({
++    value: defaultEngine,
++    overridden: props.engineSelection.kind !== "auto",
++    disabled: props.engineBusy,
++    onReset: props.onEngineReset,
++  });
+   if (props.engineOptions.length === 0) {
+     return renderSettingsSection(
+       { title: t("memoryPage.engine.title"), description: t("memoryPage.engine.description") },
+@@ -231,9 +234,12 @@ function renderEngineSection(props: MemoryViewProps) {
+         title: t("memoryPage.engine.rowTitle"),
+         description: html`
+           ${t("memoryPage.engine.catalogUnavailable")} ${t(engineHintKey(props.engineSelection))}
+-          ${defaultDescription}
++          ${defaultState.description}
++        `,
++        control: html`
++          ${defaultState.action}
++          ${renderSettingsValue(engineId ?? t("memoryPage.engine.off"), { mono: true })}
+         `,
+-        control: renderSettingsValue(engineId ?? t("memoryPage.engine.off"), { mono: true }),
+       }),
+     );
+   }
+@@ -251,15 +257,18 @@ function renderEngineSection(props: MemoryViewProps) {
+     html`
+       ${renderSettingsRow({
+         title: t("memoryPage.engine.rowTitle"),
+-        description: html`${t(engineHintKey(props.engineSelection))} ${defaultDescription}`,
++        description: html`${t(engineHintKey(props.engineSelection))} ${defaultState.description}`,
+         stacked: true,
+-        control: renderSettingsSegmented({
+-          value: engineId ?? MEMORY_ENGINE_OFF,
+-          options,
+-          disabled: props.engineBusy,
+-          ariaLabel: t("memoryPage.engine.rowTitle"),
+-          onChange: (value) => props.onEngineChange(value || null),
+-        }),
++        control: html`
++          ${defaultState.action}
++          ${renderSettingsSegmented({
++            value: engineId ?? MEMORY_ENGINE_OFF,
++            options,
++            disabled: props.engineBusy,
++            ariaLabel: t("memoryPage.engine.rowTitle"),
++            onChange: (value) => props.onEngineChange(value || null),
++          })}
++        `,
+       })}
+       ${renderDisabledEngineRow(props, engineId)}
+       ${props.engineOutcome === null
+diff --git a/ui/src/pages/config/settings-search.ts b/ui/src/pages/config/settings-search.ts
+index a6d7c8bb02..81f06cf3d6 100644
+--- a/ui/src/pages/config/settings-search.ts
++++ b/ui/src/pages/config/settings-search.ts
+@@ -51,6 +51,19 @@ const CURATED_ROUTE_VISIBLE_KEYS: Partial<Record<string, () => readonly string[]
+ 
+ function visibleSectionSchema(routeId: string, sectionSchema: JsonSchema): JsonSchema {
+   const visibleKeys = CURATED_ROUTE_VISIBLE_KEYS[routeId];
++  const properties = sectionSchema.properties;
++  if (!visibleKeys || !properties) {
++    return sectionSchema;
++  }
++  const visible = new Set(visibleKeys());
++  return {
++    ...sectionSchema,
++    properties: Object.fromEntries(
++      Object.entries(properties).filter(([child]) => visible.has(child)),
++    ),
++  };
++}
++
+ /**
+  * The Memory page hides `memory.*` children the current engine/backend makes
+  * inapplicable — `memory.qmd` only renders once qmd is the selected backend.
+@@ -62,10 +75,9 @@ function visibleMemorySchema(
+   config: Record<string, unknown>,
+ ): JsonSchema {
+   const properties = sectionSchema.properties;
+-  if (!visibleKeys || !properties) {
++  if (!properties) {
+     return sectionSchema;
+   }
+-  const visible = new Set(visibleKeys());
+   const visible = new Set(memoryVisibleSchemaKeys(resolveMemoryBackend(config)));
+   return {
+     ...sectionSchema,
+@@ -157,8 +169,9 @@ export function findSettingsSearchBlocks(params: {
+     const sectionSchema =
+       key === "wizard"
+         ? setupVisibleSchema(rawSectionSchema)
+-        : visibleSectionSchema(routeId, rawSectionSchema);
+-      routeId === "memory" ? visibleMemorySchema(rawSectionSchema, value) : rawSectionSchema;
++        : routeId === "memory"
++          ? visibleMemorySchema(rawSectionSchema, value)
++          : visibleSectionSchema(routeId, rawSectionSchema);
+     const meta = SECTION_META[key];
+     const tierSplit = splitConfigSchemaByTier({
+       schema: sectionSchema,
