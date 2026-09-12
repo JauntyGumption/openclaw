@@ -1,7 +1,6 @@
 {
   "id": "active-memory",
   "doctorContract": {
-    "configRepair": true,
     "stateMigrations": true
   },
   "activation": {
@@ -90,7 +89,17 @@
       "transcriptDir": { "type": "string" },
       "cacheTtlMs": { "type": "integer", "minimum": 1000, "maximum": 120000 },
       "circuitBreakerMaxTimeouts": { "type": "integer", "minimum": 1, "maximum": 20 },
-      "circuitBreakerCooldownMs": { "type": "integer", "minimum": 5000, "maximum": 600000 }
+      "circuitBreakerCooldownMs": { "type": "integer", "minimum": 5000, "maximum": 600000 },
+      "qmd": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "searchMode": {
+            "type": "string",
+            "enum": ["inherit", "search", "vsearch", "query"]
+          }
+        }
+      }
     }
   },
   "uiHints": {
@@ -189,6 +198,10 @@
     "transcriptDir": {
       "label": "Transcript Directory",
       "help": "Relative artifact directory under the plugin-owned per-agent transcript directory in the OpenClaw state directory. The agent id is URI-encoded; the default subdirectory is active-memory."
+    },
+    "qmd.searchMode": {
+      "label": "QMD Search Mode",
+      "help": "Override the QMD search mode used by the blocking memory sub-agent. Defaults to fast lexical search; use inherit to match the main memory backend setting."
     }
   }
 }

@@ -119,22 +119,44 @@ describe("diffConfigPaths", () => {
 
   it("does not report unchanged arrays of objects as changed", () => {
     const prev = {
-      bindings: [{ agentId: "main", match: { channel: "slack", accountId: "default" } }],
+      memory: {
+        qmd: {
+          paths: [{ path: "~/docs", pattern: "**/*.md", name: "docs" }],
+          scope: {
+            rules: [{ when: { channel: "slack" }, include: ["docs"] }],
+          },
+        },
+      },
     };
     const next = {
-      bindings: [{ agentId: "main", match: { channel: "slack", accountId: "default" } }],
+      memory: {
+        qmd: {
+          paths: [{ path: "~/docs", pattern: "**/*.md", name: "docs" }],
+          scope: {
+            rules: [{ when: { channel: "slack" }, include: ["docs"] }],
+          },
+        },
+      },
     };
     expect(diffConfigPaths(prev, next)).toStrictEqual([]);
   });
 
   it("reports changed arrays of objects", () => {
     const prev = {
-      bindings: [{ agentId: "main", match: { channel: "slack" } }],
+      memory: {
+        qmd: {
+          paths: [{ path: "~/docs", pattern: "**/*.md", name: "docs" }],
+        },
+      },
     };
     const next = {
-      bindings: [{ agentId: "main", match: { channel: "discord" } }],
+      memory: {
+        qmd: {
+          paths: [{ path: "~/docs", pattern: "**/*.txt", name: "docs" }],
+        },
+      },
     };
-    expect(diffConfigPaths(prev, next)).toContain("bindings");
+    expect(diffConfigPaths(prev, next)).toContain("memory.qmd.paths");
   });
 
   it("collapses changed agent heartbeat entries to agents.entries", () => {

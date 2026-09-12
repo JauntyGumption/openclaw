@@ -983,6 +983,9 @@ export function createPluginRuntimeMock(overrides: DeepPartial<PluginRuntime> = 
       openSyncKeyedStore: createGenericMock<PluginRuntime["state"]["openSyncKeyedStore"]>(() => {
         throw new Error("openSyncKeyedStore mock is not configured");
       }),
+      withLease: createGenericMock<PluginRuntime["state"]["withLease"]>(() => {
+        throw new Error("withLease mock is not configured");
+      }),
       openChannelIngressQueue: createGenericMock<PluginRuntime["state"]["openChannelIngressQueue"]>(
         () => {
           throw new Error("openChannelIngressQueue mock is not configured");

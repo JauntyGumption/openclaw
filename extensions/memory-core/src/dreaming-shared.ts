@@ -4,6 +4,7 @@ import {
   normalizeOptionalString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
 
+export { asNullableRecord as asRecord };
 export { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 
 export function extractAssistantText(messages: unknown[]): string | null {

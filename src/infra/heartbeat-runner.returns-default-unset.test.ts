@@ -1847,9 +1847,9 @@ describe("runHeartbeatOnce", () => {
     const sessionKey = resolveMainSessionKey(cfg);
     await seedWhatsAppSession(storePath, sessionKey);
     if (params.queueCronEvent) {
-      enqueueSystemEvent("Cron: memory maintenance completed", {
+      enqueueSystemEvent("Cron: QMD maintenance completed", {
         sessionKey,
-        contextKey: "cron:memory-maintenance",
+        contextKey: "cron:qmd-maintenance",
       });
     }
     if (params.queueSystemEvent) {

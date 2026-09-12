@@ -20,6 +20,7 @@ export function createRuntimeBase(): Pick<PluginRuntime, "config" | "state" | "s
       openBlobStore: unavailable("openBlobStore"),
       openKeyedStore: unavailable("openKeyedStore"),
       openSyncKeyedStore: unavailable("openSyncKeyedStore"),
+      withLease: unavailable("withLease"),
       openChannelIngressQueue: unavailable("openChannelIngressQueue"),
       openChannelIngressDrain: unavailable("openChannelIngressDrain"),
     },

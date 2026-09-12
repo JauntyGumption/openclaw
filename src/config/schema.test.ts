@@ -174,6 +174,19 @@ describe("config schema", () => {
     expect(res.generatedAt.trim().length).toBeGreaterThan(0);
   });
 
+  it("accepts qmd query rerank override", () => {
+    const result = OpenClawSchema.safeParse({
+      memory: {
+        backend: "qmd",
+        qmd: {
+          searchMode: "query",
+          rerank: false,
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("rejects retired status reaction emoji overrides", () => {
     const result = OpenClawSchema.safeParse({
       messages: {

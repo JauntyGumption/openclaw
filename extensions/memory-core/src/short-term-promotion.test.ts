@@ -2172,6 +2172,32 @@ describe("short-term promotion", () => {
           firstRecalledAt: "2026-04-01T00:00:00.000Z",
           lastRecalledAt: "2026-04-04T00:00:00.000Z",
           queryHashes: ["a", "b"],
+  it("audits and repairs invalid store metadata plus stale locks", async () => {
+    await withTempWorkspace(async (workspaceDir) => {
+      await writeDailyMemoryNote(workspaceDir, "2026-04-01", [
+        "Gateway host uses qmd vector search for router notes.",
+      ]);
+      await testing.writeRawRecallStore(workspaceDir, {
+        version: 1,
+        updatedAt: "2026-04-04T00:00:00.000Z",
+        entries: {
+          good: {
+            key: "good",
+            path: "memory/2026-04-01.md",
+            startLine: 1,
+            endLine: 2,
+            source: "memory",
+            snippet: "Gateway host uses qmd vector search for router notes.",
+            recallCount: 2,
+            totalScore: 1.8,
+            maxScore: 0.95,
+            firstRecalledAt: "2026-04-01T00:00:00.000Z",
+            lastRecalledAt: "2026-04-04T00:00:00.000Z",
+            queryHashes: ["a", "b"],
+          },
+          bad: {
+            path: "",
+          },
         },
         bad: {
           path: "",
@@ -2593,6 +2619,78 @@ describe("short-term promotion", () => {
         await Promise.all(
           ["second", "third"].map((query) => recordMemoryRecalls(workspaceDir, query, [result])),
         );
+  it("leaves empty recall stores normalized without rewriting", async () => {
+    await withTempWorkspace(async (workspaceDir) => {
+      const repair = await repairShortTermPromotionArtifacts({ workspaceDir });
+
+      expect(repair.changed).toBe(false);
+      expect(repair.rewroteStore).toBe(false);
+      const store = await testing.readRecallStore(workspaceDir, new Date().toISOString());
+      expect(store.version).toBe(1);
+      expect(store.entries).toEqual({});
+    });
+  });
+
+  it("does not rewrite an already normalized healthy recall store", async () => {
+    await withTempWorkspace(async (workspaceDir) => {
+      const snippet = "Gateway host uses qmd vector search for router notes.";
+      await writeDailyMemoryNote(workspaceDir, "2026-04-01", [snippet]);
+      const raw = {
+        version: 1,
+        updatedAt: "2026-04-04T00:00:00.000Z",
+        entries: {
+          good: {
+            key: "good",
+            path: "memory/2026-04-01.md",
+            startLine: 1,
+            endLine: 2,
+            source: "memory",
+            snippet,
+            recallCount: 2,
+            dailyCount: 0,
+            groundedCount: 0,
+            totalScore: 1.8,
+            maxScore: 0.95,
+            firstRecalledAt: "2026-04-01T00:00:00.000Z",
+            lastRecalledAt: "2026-04-04T00:00:00.000Z",
+            queryHashes: ["a", "b"],
+            recallDays: ["2026-04-04"],
+            conceptTags: deriveConceptTags({
+              path: "memory/2026-04-01.md",
+              snippet,
+            }),
+            provenance: {
+              originClass: "agent",
+              sessionKind: "unknown",
+              observedAt: Date.parse("2026-04-04T00:00:00.000Z"),
+            },
+          },
+        },
+      };
+      await testing.writeRawRecallStore(workspaceDir, raw);
+
+      const repair = await repairShortTermPromotionArtifacts({ workspaceDir });
+
+      expect(repair.changed).toBe(false);
+      expect(repair.rewroteStore).toBe(false);
+      expect(await testing.readRecallStore(workspaceDir, new Date().toISOString())).toEqual(raw);
+    });
+  });
+
+  it("waits for an active short-term lock before repairing", async () => {
+    await withTempWorkspace(async (workspaceDir) => {
+      await testing.writeRawRecallStore(workspaceDir, {
+        version: 1,
+        updatedAt: "2026-04-04T00:00:00.000Z",
+        entries: {
+          bad: {
+            path: "",
+          },
+        },
+      });
+      await testing.writeShortTermLock(workspaceDir, {
+        owner: `${process.pid}:${Date.now()}`,
+        acquiredAt: Date.now(),
       });
     });
 

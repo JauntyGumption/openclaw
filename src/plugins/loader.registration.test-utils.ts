@@ -757,7 +757,7 @@ describe("loadOpenClawPlugins", () => {
                   return { manager: null, error: "snapshot" };
                 },
                 resolveMemoryBackendConfig() {
-                  return { backend: "builtin" };
+                  return { backend: "qmd", qmd: {} };
                 },
               },
             });

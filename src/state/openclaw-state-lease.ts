@@ -49,7 +49,7 @@ export type OpenClawStateLeaseContext = {
   assertOwnedInTransaction(database: DatabaseSync): void;
 };
 
-type OpenClawStateLeaseErrorCode =
+export type OpenClawStateLeaseErrorCode =
   | "OPENCLAW_STATE_LEASE_INVALID_INPUT"
   | "OPENCLAW_STATE_LEASE_TIMEOUT"
   | "OPENCLAW_STATE_LEASE_ABORTED"

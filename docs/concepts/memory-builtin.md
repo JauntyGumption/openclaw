@@ -179,6 +179,8 @@ The builtin engine can index directories outside the workspace with
 `memory.search.extraPaths`. It uses bounded lexical query expansion to improve
 conversational recall, but it does not provide a learned or model-based relevance
 reranking stage. Its MMR pass is deterministic and local.
+Consider switching to [QMD](/concepts/memory-qmd) if you need reranking, query
+expansion, or want to index directories outside the workspace.
 
 Consider [Honcho](/concepts/memory-honcho) if you want cross-session memory
 with automatic user modeling.

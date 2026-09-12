@@ -7,6 +7,7 @@ import {
   type OpenClawConfig,
   type ResolvedMemorySearchConfig,
 } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
+import { extractKeywords } from "openclaw/plugin-sdk/memory-core-host-engine-qmd";
 import {
   readMemoryFile,
   MEMORY_EMBEDDING_CACHE_TABLE,

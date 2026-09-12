@@ -1625,7 +1625,7 @@ describe("memory-core dreaming phases", () => {
           role: "user",
           timestamp: "2026-04-05T18:01:00.000Z",
           content:
-            "[cron:job-1 Codex Sessions Sync] Run Codex sessions sync: 1. Convert sessions 2. Update index",
+            "[cron:job-1 Codex Sessions Sync] Run Codex sessions sync: 1. Convert sessions 2. Update qmd",
         },
         {
           role: "assistant",
@@ -1804,12 +1804,12 @@ describe("memory-core dreaming phases", () => {
         {
           role: "user",
           timestamp: "2026-04-16T18:06:00.000Z",
-          content: "[cron:job-2 Example] Run the memory sync",
+          content: "[cron:job-2 Example] Run the qmd sync",
         },
         {
           role: "assistant",
           timestamp: "2026-04-16T18:07:00.000Z",
-          content: "Running the memory sync now.",
+          content: "Running the qmd sync now.",
         },
         {
           role: "user",
@@ -1852,7 +1852,7 @@ describe("memory-core dreaming phases", () => {
     expect(corpus).not.toContain("Checkpoint chatter should stay out.");
     expect(corpus).not.toContain("Read HEARTBEAT.md");
     expect(corpus).not.toContain("HEARTBEAT_OK");
-    expect(corpus).not.toContain("Run the memory sync");
+    expect(corpus).not.toContain("Run the qmd sync");
   });
 
   it.each([

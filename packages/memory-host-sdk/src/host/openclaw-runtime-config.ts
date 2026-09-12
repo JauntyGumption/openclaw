@@ -10,5 +10,12 @@ export { parseDurationMs } from "../../../../src/cli/parse-duration.js";
 export { parseNonNegativeByteSize } from "../../../../src/config/byte-size.js";
 export { resolveSessionTranscriptsDirForAgent } from "../../../../src/config/sessions/paths.js";
 export { resolveStateDir } from "../../../../src/config/paths.js";
-export type { MemoryCitationsMode } from "../../../../src/config/types.memory.js";
+export type {
+  MemoryBackend,
+  MemoryCitationsMode,
+  MemoryQmdConfig,
+  MemoryQmdIndexPath,
+  MemoryQmdSearchMode,
+} from "../../../../src/config/types.memory.js";
+export type { SessionSendPolicyConfig } from "../../../../src/config/types.base.js";
 export type { MemorySearchConfig } from "../../../../src/config/types.tools.js";

@@ -642,7 +642,7 @@ async function collectSessionIngestionBatches(params: {
       }
       if (
         // Dreaming learns only from the live corpus. Retained reset/delete
-        // archives stay in the shared corpus for memory_search.
+        // archives stay in the shared corpus for QMD and memory_search.
         entry.artifactKind !== "active-session" ||
         isCheckpointSessionTranscriptPath(entry.sessionFile)
       ) {

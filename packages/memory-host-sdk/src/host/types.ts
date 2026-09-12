@@ -1,5 +1,7 @@
 // Public memory host contracts shared by runtime, builtin search, and package consumers.
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
+// Public memory host contracts shared by runtime, QMD, builtin search, and
+// package consumers.
 export type MemorySource = "memory" | "sessions";
 
 export type MemoryOriginClass = "owner" | "agent" | "untrusted" | "system";
@@ -85,8 +87,36 @@ export type MemorySyncParams = {
   progress?: (update: MemorySyncProgressUpdate) => void;
 };
 
+/** @public Runtime backend/mode diagnostics for memory search. */
+export type MemorySearchRuntimeQmdCollectionValidationDebug = {
+  cacheState?: "hit" | "miss" | "write" | "bypass-force" | "error";
+  elapsedMs: number;
+  collectionCount: number;
+  listCalls?: number;
+  showCalls?: number;
+};
+
+/** @public */ export type MemorySearchRuntimeQmdMultiCollectionProbeDebug = {
+  cacheState?: "hit" | "miss" | "write" | "error";
+  elapsedMs: number;
+  supported: boolean;
+};
+
+/** @public */ export type MemorySearchRuntimeQmdSearchPlanDebug = {
+  command?: "query" | "search" | "vsearch";
+  collectionCount?: number;
+  groupCount?: number;
+  sources?: MemorySource[];
+};
+
+/** @public */ export type MemorySearchRuntimeQmdDebug = {
+  collectionValidation?: MemorySearchRuntimeQmdCollectionValidationDebug;
+  multiCollectionProbe?: MemorySearchRuntimeQmdMultiCollectionProbeDebug;
+  searchPlan?: MemorySearchRuntimeQmdSearchPlanDebug;
+};
+
 export type MemorySearchRuntimeDebug = {
-  backend: "builtin";
+  backend: "builtin" | "qmd";
   configuredMode?: string;
   effectiveMode?: string;
   fallback?: string;
@@ -96,6 +126,7 @@ export type MemorySearchRuntimeDebug = {
     reason: string;
     degradedTo: "keyword-only";
   };
+  qmd?: MemorySearchRuntimeQmdDebug;
 };
 
 /** Successful memory-file excerpt, optionally paginated/truncated. */
@@ -141,7 +172,7 @@ export type MemoryVectorIndexState =
   | { state: "unverified" };
 
 export type MemoryProviderStatus = {
-  backend: "builtin";
+  backend: "builtin" | "qmd";
   provider: string;
   model?: string;
   requestedProvider?: string;
@@ -230,6 +261,7 @@ export interface MemorySearchManager {
       lexicalOnly?: boolean;
       /** Active repository identities used only for project-aware ranking. */
       activeProjectKeys?: string[];
+      qmdSearchModeOverride?: "query" | "search" | "vsearch";
       onDebug?: (debug: MemorySearchRuntimeDebug) => void;
       sources?: MemorySource[];
       /** Optional caller cancellation; managers consume it where their runtime supports cancellation. */

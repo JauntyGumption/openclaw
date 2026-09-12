@@ -432,6 +432,14 @@ knobs that exist:
 | Cross-conversation recall       | `agents.entries.<id>.memory.search.rememberAcrossConversations` | [Active memory](/concepts/active-memory)                 |
 | Flush behavior                  | `agents.defaults.compaction.memoryFlush`                        | [Memory overview](/concepts/memory)                      |
 | Memory plugin selection         | `plugins.slots.memory`                                          | [Builtin](/concepts/memory-builtin), [Plugins](/plugins) |
+| Concern                         | Where                                                           | Reference                                                        |
+| ------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Dreaming enable, cadence, model | `plugins.entries.memory-core.config.dreaming`                   | [Dreaming](/concepts/dreaming)                                   |
+| Search providers, hybrid tuning | `memory.search`                                                 | [Memory config](/reference/memory-config)                        |
+| Escalation lane mode, scope     | `plugins.entries.active-memory`                                 | [Active memory](/concepts/active-memory)                         |
+| Cross-conversation recall       | `agents.entries.<id>.memory.search.rememberAcrossConversations` | [Active memory](/concepts/active-memory)                         |
+| Flush behavior                  | `agents.defaults.compaction.memoryFlush`                        | [Memory overview](/concepts/memory)                              |
+| Backend selection               | plugin slots                                                    | [Builtin](/concepts/memory-builtin), [QMD](/concepts/memory-qmd) |
 
 ## Related
 

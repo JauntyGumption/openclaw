@@ -220,6 +220,7 @@ export function buildQaGatewayConfig(params: {
       file: `${params.workspaceDir}/logs/openclaw-YYYY-MM-DD.log`,
     },
     memory: {
+      backend: "builtin",
       search: {
         ...mockMemorySearch,
       },

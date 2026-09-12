@@ -102,6 +102,7 @@ describe("registerPolicyDoctorChecks", () => {
       diagnostics: { otel: { enabled: true, captureContent: true } },
       session: { maintenance: { mode: "warn" } },
       memory: { search: { rememberAcrossConversations: true, sources: ["sessions"] } },
+      memory: { backend: "qmd", qmd: { sessions: { enabled: true } } },
     } as unknown as OpenClawConfig;
     const configPath = await writeDataHandlingPolicyFixture({
       sensitiveLogging: { requireRedaction: true },
@@ -132,7 +133,7 @@ describe("registerPolicyDoctorChecks", () => {
         }),
         expect.objectContaining({
           kind: "memorySessionTranscriptIndexing",
-          source: "oc://openclaw.config/memory/search/rememberAcrossConversations",
+          source: "oc://openclaw.config/memory/qmd/sessions/enabled",
           value: true,
         }),
       ]),
@@ -151,7 +152,7 @@ describe("registerPolicyDoctorChecks", () => {
         }),
         expect.objectContaining({
           checkId: "policy/data-handling-session-transcript-memory-enabled",
-          ocPath: "oc://openclaw.config/memory/search/rememberAcrossConversations",
+          ocPath: "oc://openclaw.config/memory/qmd/sessions/enabled",
           requirement: "oc://policy.jsonc/dataHandling/memory/denySessionTranscriptIndexing",
         }),
       ]),
@@ -302,6 +303,7 @@ describe("registerPolicyDoctorChecks", () => {
     const cfg = {
       ...cfgWithPolicy(),
       memory: {
+        qmd: { sessions: { enabled: true } },
         search: {
           enabled: false,
           rememberAcrossConversations: true,

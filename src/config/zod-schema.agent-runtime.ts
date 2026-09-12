@@ -779,6 +779,22 @@ export const MemorySearchSchema = z
         ]),
       )
       .optional(),
+    qmd: z
+      .object({
+        extraCollections: z
+          .array(
+            z
+              .object({
+                path: z.string(),
+                name: z.string().optional(),
+                pattern: z.string().optional(),
+              })
+              .strict(),
+          )
+          .optional(),
+      })
+      .strict()
+      .optional(),
     multimodal: z
       .object({
         enabled: z.boolean().optional(),

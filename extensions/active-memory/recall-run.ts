@@ -14,6 +14,7 @@ import {
 import { readSessionTranscriptEvents } from "openclaw/plugin-sdk/session-transcript-runtime";
 import { tempWorkspace, resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/temp-path";
 import {
+  applyActiveMemoryRuntimeConfigSnapshot,
   isMissingRegisteredMemoryToolsError,
   requireTransientWorkspaceDir,
   resolvePersistentTranscriptBaseDir,
@@ -301,6 +302,10 @@ async function runRecallSubagent(params: {
       messageProvider: params.messageProvider,
       channelId: params.channelId,
     });
+    const embeddedConfig = applyActiveMemoryRuntimeConfigSnapshot(
+      params.runtimeConfig,
+      params.config,
+    );
     const embeddedTimeoutMs = params.config.timeoutMs + params.config.setupGraceTimeoutMs;
     const result = await params.api.runtime.agent
       .runEmbeddedAgent({
@@ -318,7 +323,7 @@ async function runRecallSubagent(params: {
         sessionFile: runtimeSessionFile,
         workspaceDir,
         agentDir,
-        config: params.runtimeConfig,
+        config: embeddedConfig,
         prompt,
         provider: modelRef.provider,
         model: modelRef.model,

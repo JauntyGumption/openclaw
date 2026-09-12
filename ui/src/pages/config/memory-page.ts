@@ -32,12 +32,19 @@ import {
 import "./memory-dreaming-page.ts";
 import "./memory-memories.ts";
 import { dreamingConfigPath, resolveDreamingTimezoneDefault } from "./memory-defaults.ts";
+import {
+  dreamingConfigPath,
+  resetMemoryBackend,
+  resetMemoryEngine,
+  resolveDreamingTimezoneDefault,
+} from "./memory-defaults.ts";
 import { renderDreamingSettings, renderDreamingUnsupported } from "./memory-dreaming.ts";
 import { renderMemoryOverview, type MemoryOverviewStatus } from "./memory-overview.ts";
 import {
   canonicalMemoryRouteLocation,
   memoryTabForRoute,
   memorySchemaKeysForTab,
+  resolveMemoryBackendSelection,
   resolveMemoryEngineSelection,
   selectedEngineId,
   type MemoryEngineSelection,
@@ -633,6 +640,7 @@ class MemorySettingsPage extends OpenClawLightDomElement {
     const engineSelection = resolveMemoryEngineSelection(this.configObject);
     const engineMutationDisabled =
       this.mutationDisabled || (this.catalog.kind === "ready" && !this.catalog.mutationAllowed);
+    const backendSelection = resolveMemoryBackendSelection(this.configObject);
     const activeTab = this.activeTab();
     const agentId = this.resolveAgentId();
     return renderMemory({
@@ -644,6 +652,19 @@ class MemorySettingsPage extends OpenClawLightDomElement {
       engineBusy: this.engineBusy || engineMutationDisabled,
       engineOutcome: this.engineOutcome,
       onEngineChange: (nextEngineId) => void this.changeEngine(nextEngineId, engineSelection),
+      onEngineReset: () => {
+        if (resetMemoryEngine(runtimeConfig, this.engineBusy || engineMutationDisabled)) {
+          this.engineOutcome = null;
+        }
+      },
+      backendSelection,
+      backendBusy: this.mutationDisabled,
+      onBackendChange: (next) => {
+        if (!this.mutationDisabled) {
+          runtimeConfig.patchForm(["memory", "backend"], next);
+        }
+      },
+      onBackendReset: () => resetMemoryBackend(runtimeConfig, this.mutationDisabled),
       addons: buildMemoryAddonRows(this.catalog, {
         busy: this.addonBusy,
         errors: this.addonErrors,
@@ -686,7 +707,9 @@ class MemorySettingsPage extends OpenClawLightDomElement {
       `,
       dreams: html` <openclaw-memory-dreaming .agentId=${agentId}></openclaw-memory-dreaming> `,
       editor:
-        activeTab === "settings" ? this.buildEditor(memorySchemaKeysForTab("settings")) : html``,
+        activeTab === "settings"
+          ? this.buildEditor(memorySchemaKeysForTab("settings", backendSelection?.backend ?? null))
+          : html``,
       dreamingSettings: activeTab === "settings" ? this.renderDreamingControls() : html``,
     });
   }

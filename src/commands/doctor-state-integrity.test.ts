@@ -287,6 +287,29 @@ describe("structured state integrity findings", () => {
   });
 });
 
+async function runOrphanTranscriptCheckWithQmdSessions(enabled: boolean, homeDir: string) {
+  const cfg: OpenClawConfig = {
+    agents: {
+      defaults: {},
+      entries: { main: { default: true } },
+    },
+    memory: {
+      backend: "qmd",
+      qmd: {
+        sessions: { enabled },
+      },
+
+      search: { rememberAcrossConversations: false },
+    },
+  };
+  setupSessionState(cfg, process.env, homeDir);
+  const sessionsDir = resolveSessionTranscriptsDirForAgent("main", process.env, () => homeDir);
+  fs.writeFileSync(path.join(sessionsDir, "orphan-session.jsonl"), '{"type":"session"}\n');
+  const confirmRuntimeRepair = vi.fn(async () => false);
+  await noteStateIntegrity(cfg, { confirmRuntimeRepair, note: noteMock });
+  return confirmRuntimeRepair;
+}
+
 describe("doctor state integrity oauth dir checks", () => {
   let envSnapshot: ReturnType<typeof captureEnv>;
   let tempHome = "";
@@ -520,6 +543,198 @@ describe("doctor state integrity oauth dir checks", () => {
     const text = await runStateIntegrityText({
       agents: {
         list: [{ id: "main", default: true }, { id: "research" }],
+    await noteStateIntegrity(cfg, {
+      confirmRuntimeRepair: vi.fn(async () => false),
+      note: noteMock,
+    });
+
+    expect(stateIntegrityText()).not.toContain("recent sessions are missing transcripts");
+    expect(stateIntegrityText()).not.toContain("Main session transcript missing");
+  });
+
+  it("does not auto-archive orphan transcripts from non-interactive repair mode", async () => {
+    const cfg: OpenClawConfig = {};
+    setupSessionState(cfg, process.env, process.env.HOME ?? "");
+    const sessionsDir = resolveSessionTranscriptsDirForAgent("main", process.env, () => tempHome);
+    fs.writeFileSync(path.join(sessionsDir, "orphan-session.jsonl"), '{"type":"session"}\n');
+    const confirmRuntimeRepair = vi.fn(
+      async (params: { initialValue?: boolean; requiresInteractiveConfirmation?: boolean }) =>
+        params.requiresInteractiveConfirmation !== true,
+    );
+    await noteStateIntegrity(cfg, { confirmRuntimeRepair, note: noteMock });
+
+    const archivePrompt = repairPromptCalls(confirmRuntimeRepair).find(
+      (prompt) => prompt.requiresInteractiveConfirmation === true,
+    );
+    expect(archivePrompt?.initialValue).toBe(false);
+    const files = fs.readdirSync(sessionsDir);
+    expect(files).toContain("orphan-session.jsonl");
+    const archivedOrphanTranscripts = files.filter((name) =>
+      name.startsWith("orphan-session.jsonl.deleted."),
+    );
+    expect(archivedOrphanTranscripts).toStrictEqual([]);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "does not archive referenced transcripts when the state dir path resolves through a symlink",
+    async () => {
+      const cfg: OpenClawConfig = {};
+      const originalHome = tempHome;
+      const symlinkHome = path.join(
+        path.dirname(originalHome),
+        `${path.basename(originalHome)}-link`,
+      );
+      fs.symlinkSync(originalHome, symlinkHome, "dir");
+      try {
+        const symlinkStateDir = path.join(symlinkHome, ".openclaw");
+        setTestEnvValue("HOME", symlinkHome);
+        setTestEnvValue("OPENCLAW_HOME", symlinkHome);
+        setTestEnvValue("OPENCLAW_STATE_DIR", symlinkStateDir);
+
+        setupSessionState(cfg, process.env, symlinkHome);
+        const sessionsDir = resolveSessionTranscriptsDirForAgent(
+          "main",
+          process.env,
+          () => symlinkHome,
+        );
+        const transcriptPath = path.join(sessionsDir, "linked-session.jsonl");
+        fs.writeFileSync(transcriptPath, '{"type":"session"}\n');
+        writeSessionStore(cfg, {
+          "agent:main:main": {
+            sessionId: "linked-session",
+            updatedAt: Date.now(),
+          },
+        });
+
+        const confirmRuntimeRepair = vi.fn(async (params: { message: string }) =>
+          params.message.includes("This only renames them to *.deleted.<timestamp>."),
+        );
+        await noteStateIntegrity(cfg, { confirmRuntimeRepair, note: noteMock });
+
+        expect(fs.existsSync(transcriptPath)).toBe(true);
+        expect(fs.readdirSync(sessionsDir).filter((name) => name.includes(".deleted."))).toEqual(
+          [],
+        );
+        expect(stateIntegrityText()).not.toContain("These .jsonl files are no longer referenced");
+      } finally {
+        fs.rmSync(symlinkHome, { force: true, recursive: true });
+      }
+    },
+  );
+
+  it("suppresses orphan transcript warnings when QMD sessions are enabled", async () => {
+    const confirmRuntimeRepair = await runOrphanTranscriptCheckWithQmdSessions(true, tempHome);
+
+    expect(stateIntegrityText()).not.toContain(
+      "These .jsonl files are no longer referenced by sessions.json",
+    );
+    expect(confirmRuntimeRepair).not.toHaveBeenCalled();
+  });
+
+  it("still detects orphan transcripts when QMD sessions are disabled", async () => {
+    const confirmRuntimeRepair = await runOrphanTranscriptCheckWithQmdSessions(false, tempHome);
+
+    expect(stateIntegrityText()).toContain(
+      "These .jsonl files are no longer referenced by sessions.json",
+    );
+    expect(confirmRuntimeRepair).toHaveBeenCalled();
+  });
+
+  it("prints openclaw-only verification hints when recent sessions are missing transcripts", async () => {
+    const cfg: OpenClawConfig = {};
+    writeSessionStore(cfg, {
+      "agent:main:main": {
+        sessionId: "missing-transcript",
+        updatedAt: Date.now(),
+      },
+    });
+    const text = await runStateIntegrityText(cfg);
+    expect(text).toContain("recent sessions are missing transcripts");
+    expect(text).toMatch(/openclaw sessions --store ".*sessions\.json"/);
+    expect(text).toMatch(
+      /openclaw sessions cleanup --store ".*sessions\.json" --dry-run --fix-missing/,
+    );
+    expect(text).not.toMatch(
+      /openclaw sessions cleanup --store ".*sessions\.json" --dry-run(?! --fix-missing)/,
+    );
+    expect(text).toMatch(
+      /openclaw sessions cleanup --store ".*sessions\.json" --enforce --fix-missing/,
+    );
+    expect(text).not.toContain("--active");
+    expect(text).not.toContain(" ls ");
+  });
+
+  it("moves a heartbeat-poisoned main session and clears stale TUI restore pointers", async () => {
+    const cfg: OpenClawConfig = {};
+    setupSessionState(cfg, process.env, tempHome);
+    const sessionsDir = resolveSessionTranscriptsDirForAgent("main", process.env, () => tempHome);
+    fs.writeFileSync(
+      path.join(sessionsDir, "heartbeat-session.jsonl"),
+      [
+        JSON.stringify({ message: { role: "user", content: HEARTBEAT_TRANSCRIPT_PROMPT } }),
+        JSON.stringify({ message: { role: "assistant", content: "HEARTBEAT_OK" } }),
+        "",
+      ].join("\n"),
+    );
+    writeSessionStore(cfg, {
+      "agent:main:main": {
+        sessionId: "heartbeat-session",
+        updatedAt: Date.now(),
+      },
+    });
+    const stateDir = process.env.OPENCLAW_STATE_DIR ?? "";
+    await writeTuiLastSessionKey({
+      scopeKey: "default",
+      sessionKey: "agent:main:main",
+      stateDir,
+    });
+    await writeTuiLastSessionKey({
+      scopeKey: "telegram",
+      sessionKey: "agent:main:telegram:thread",
+      stateDir,
+    });
+
+    const confirmRuntimeRepair = vi.fn(async (params: { message: string }) =>
+      params.message.startsWith("Move heartbeat-owned main session"),
+    );
+    await noteStateIntegrity(cfg, { confirmRuntimeRepair, note: noteMock });
+
+    const storePath = resolveStorePath(cfg.session?.store, { agentId: "main" });
+    const store = JSON.parse(fs.readFileSync(storePath, "utf8")) as Record<string, SessionEntry>;
+    const recoveredKey = Object.keys(store).find((key) =>
+      key.startsWith("agent:main:heartbeat-recovered-"),
+    );
+    expect(store["agent:main:main"]).toBeUndefined();
+    if (recoveredKey === undefined) {
+      throw new Error("expected recovered heartbeat session key");
+    }
+    expect(store[recoveredKey]?.sessionId).toBe("heartbeat-session");
+
+    await expect(readTuiLastSessionKey({ scopeKey: "default", stateDir })).resolves.toBeNull();
+    await expect(readTuiLastSessionKey({ scopeKey: "telegram", stateDir })).resolves.toBe(
+      "agent:main:telegram:thread",
+    );
+    expect(doctorChangesText()).toContain("Moved heartbeat-owned main session agent:main:main");
+    expect(doctorChangesText()).toContain("Cleared 1 stale TUI last-session pointer");
+  });
+
+  it("does not move a mixed main transcript that has real user activity", async () => {
+    const cfg: OpenClawConfig = {};
+    setupSessionState(cfg, process.env, tempHome);
+    const sessionsDir = resolveSessionTranscriptsDirForAgent("main", process.env, () => tempHome);
+    fs.writeFileSync(
+      path.join(sessionsDir, "mixed-session.jsonl"),
+      [
+        JSON.stringify({ message: { role: "user", content: HEARTBEAT_TRANSCRIPT_PROMPT } }),
+        JSON.stringify({ message: { role: "assistant", content: "HEARTBEAT_OK" } }),
+        JSON.stringify({ message: { role: "user", content: "hello from telegram" } }),
+        "",
+      ].join("\n"),
+    );
+    writeSessionStore(cfg, {
+      "agent:main:main": {
+        sessionId: "mixed-session",
+        updatedAt: Date.now(),
       },
     });
 

@@ -135,6 +135,19 @@ function pushMemorySessionTranscriptIndexing(
   cfg: Record<string, unknown>,
 ): void {
   const memory = asNonArrayRecord(cfg.memory);
+  const qmd = asNonArrayRecord(memory.qmd);
+  const qmdSessions = asNonArrayRecord(qmd.sessions);
+  if (qmdSessions.enabled !== undefined) {
+    entries.push({
+      id: "memory-qmd-session-transcripts",
+      kind: "memorySessionTranscriptIndexing",
+      source: "oc://openclaw.config/memory/qmd/sessions/enabled",
+      scope: "global",
+      value: memory.backend === "qmd" && readBoolean(qmdSessions.enabled) === true,
+      explicit: true,
+    });
+  }
+
   const defaultsMemorySearch = asNonArrayRecord(memory.search);
   const defaultSessionMemory = memorySearchSessionTranscriptIndexing(defaultsMemorySearch);
   if (defaultSessionMemory !== undefined) {

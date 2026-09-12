@@ -13,7 +13,10 @@ import {
   resolveMemoryDreamingPluginConfig,
   type MemoryCorpusSearchResult,
 } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
-import type { MemorySearchResult } from "openclaw/plugin-sdk/memory-core-host-runtime-files";
+import {
+  resolveMemoryBackendConfig,
+  type MemorySearchResult,
+} from "openclaw/plugin-sdk/memory-core-host-runtime-files";
 import {
   resolveMemoryDreamingConfig,
   resolveMemoryDeepDreamingConfig,
@@ -44,6 +47,7 @@ import {
 } from "./memory/search-deadline.js";
 import { recordShortTermRecalls } from "./short-term-promotion.js";
 import {
+  clampResultsByInjectedChars,
   decorateCitations,
   resolveMemoryCitationsMode,
   shouldIncludeCitations,
@@ -347,6 +351,7 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
                   agentId,
                   purpose: memoryManagerPurpose,
                   acquireLocalService: options.acquireLocalService,
+                  withLease: options.withLease,
                 }),
               );
               if ("error" in memory) {
@@ -368,6 +373,7 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
                       agentId,
                       purpose: memoryManagerPurpose,
                       acquireLocalService: options.acquireLocalService,
+                      withLease: options.withLease,
                     }),
                   );
                   return "error" in refreshed
@@ -424,7 +430,7 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
             sessionKey: options.agentSessionKey,
           });
           const rawResults = executed.rawResults;
-          const memoryResults = decorateCitations(
+          const decorated = decorateCitations(
             rawResults.map((result) => ({
               ...result,
               snippet: stripMemoryAnnotationCarriers(result.snippet),
@@ -432,6 +438,13 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
             includeCitations,
           );
           const status = executed.status;
+          const memoryResults =
+            status.backend === "qmd"
+              ? clampResultsByInjectedChars(
+                  decorated,
+                  resolveMemoryBackendConfig({ cfg, agentId }).qmd?.limits.maxInjectedChars,
+                )
+              : decorated;
           if (
             resolveMemoryDreamingConfig({
               pluginConfig: resolveMemoryDreamingPluginConfig(cfg),
@@ -582,15 +595,37 @@ export function createMemoryGetTool(options: MemoryToolOptions) {
             signal: callerSignal,
           });
         }
-        return await executeMemoryReadResult({
-          read: async () =>
+        const resolved = resolveMemoryBackendConfig({ cfg, agentId });
+        let read: () => ReturnType<typeof readAgentMemoryFile>;
+        if (resolved.backend === "builtin") {
+          read = async () =>
             await readAgentMemoryFile({
               cfg,
               agentId,
               relPath,
               from: from ?? undefined,
               lines: lines ?? undefined,
-            }),
+            });
+        } else {
+          const memory = await getMemoryManagerContextWithPurpose({
+            cfg,
+            agentId,
+            purpose: "status",
+            acquireLocalService: options.acquireLocalService,
+            withLease: options.withLease,
+          });
+          if ("error" in memory) {
+            return jsonResult({ path: relPath, text: "", disabled: true, error: memory.error });
+          }
+          read = async () =>
+            await memory.manager.readFile({
+              relPath,
+              from: from ?? undefined,
+              lines: lines ?? undefined,
+            });
+        }
+        return await executeMemoryReadResult({
+          read,
           requestedCorpus,
           relPath,
           from: from ?? undefined,

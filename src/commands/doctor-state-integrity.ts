@@ -1092,7 +1092,6 @@ export async function noteStateIntegrity(
   const cloudSyncedStateDir = detectMacCloudSyncedStateDir(stateDir);
   const linuxSdBackedStateDir = detectLinuxSdBackedStateDir(stateDir);
   const linuxVolatileStateDir = detectLinuxVolatileStateDir(stateDir);
-
   if (cloudSyncedStateDir) {
     warnings.push(
       [

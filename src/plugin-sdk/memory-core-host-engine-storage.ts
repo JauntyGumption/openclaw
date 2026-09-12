@@ -92,5 +92,7 @@ export type {
   MemorySessionSyncTarget,
   MemorySyncParams,
   ResolvedMemoryBackendConfig,
+  ResolvedQmdConfig,
+  ResolvedQmdMcporterConfig,
   MemoryVectorIndexState,
 } from "../../packages/memory-host-sdk/src/engine-storage.js";

@@ -5,6 +5,7 @@ import type {
   OpenClawConfig,
 } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
+import type { PluginStateLeaseRunner } from "openclaw/plugin-sdk/plugin-state-runtime";
 import {
   resolveMemoryToolContext,
   type MemoryToolContract,
@@ -30,6 +31,7 @@ export async function getMemoryManagerContextWithPurpose(params: {
   agentId: string;
   purpose?: "default" | "status" | "cli";
   acquireLocalService?: MemoryCoreAcquireLocalService;
+  withLease?: PluginStateLeaseRunner;
 }): Promise<
   | {
       manager: NonNullable<MemorySearchManagerResult["manager"]>;
@@ -46,13 +48,13 @@ export async function getMemoryManagerContextWithPurpose(params: {
     agentId: params.agentId,
     purpose: params.purpose,
     ...(params.acquireLocalService ? { acquireLocalService: params.acquireLocalService } : {}),
+    ...(params.withLease ? { withLease: params.withLease } : {}),
   });
   return manager
     ? {
         manager,
         debug: {
-          backend: debug?.backend ?? "builtin",
-          purpose: debug?.purpose ?? params.purpose ?? "default",
+          ...debug,
           managerMs: debug?.managerMs ?? Math.max(0, Date.now() - startedAt),
         },
       }

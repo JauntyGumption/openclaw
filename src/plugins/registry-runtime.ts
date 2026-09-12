@@ -8,6 +8,11 @@ import {
   type OpenBlobStoreOptions,
   type PluginBlobStore,
 } from "../plugin-state/plugin-blob-store.js";
+import { withPluginStateLease } from "../plugin-state/plugin-state-lease.js";
+import type {
+  PluginStateLeaseContext,
+  PluginStateLeaseOptions,
+} from "../plugin-state/plugin-state-lease.types.js";
 import {
   createPluginStateKeyedStore,
   createPluginStateSyncKeyedStore,
@@ -172,6 +177,7 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
         | "openBlobStore"
         | "openKeyedStore"
         | "openSyncKeyedStore"
+        | "withLease"
         | "openChannelIngressQueue"
         | "openChannelIngressDrain",
     ) => {
@@ -229,6 +235,13 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
             ): PluginStateSyncKeyedStore<T> => {
               assertTrustedPluginRuntime("openSyncKeyedStore");
               return createPluginStateSyncKeyedStore<T>(pluginId, options);
+            },
+            withLease: <T>(
+              options: PluginStateLeaseOptions,
+              run: (lease: PluginStateLeaseContext) => Promise<T>,
+            ): Promise<T> => {
+              assertTrustedPluginRuntime("withLease");
+              return withPluginStateLease(pluginId, options, run);
             },
             openChannelIngressQueue: <TPayload, TMetadata = unknown, TCompletedMetadata = unknown>(
               options?: Omit<Parameters<typeof createChannelIngressQueue>[0], "channelId">,

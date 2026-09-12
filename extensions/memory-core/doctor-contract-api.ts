@@ -4,13 +4,11 @@ import { hostEventsStateMigration } from "./src/migration/doctor-host-events.js"
 import {
   memorySidecarStateMigration,
   qmdLocksStateMigration,
-  qmdWorkspaceStateMigration,
 } from "./src/migration/doctor-memory-sidecar.js";
 
 export const stateMigrations: PluginDoctorStateMigration[] = [
   hostEventsStateMigration,
   dreamingStateMigration,
   memorySidecarStateMigration,
-  qmdWorkspaceStateMigration,
   qmdLocksStateMigration,
 ];

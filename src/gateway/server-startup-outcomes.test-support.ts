@@ -13,6 +13,7 @@ type GatewayStartupOutcome = Parameters<typeof formatGatewayStartupOutcomes>[0][
 const inactiveParams: GatewayStartupOutcomeRecorderParams = {
   cfg: {},
   gatewayStartHooks: false,
+  memoryStartupMode: "off",
   env: {},
 };
 
@@ -21,6 +22,7 @@ describe("gateway startup outcomes", () => {
     const outcomes: GatewayStartupOutcome[] = [
       { subsystem: "gmail-model", status: "scheduled" },
       { subsystem: "gmail-watcher", status: "skipped", reason: "no-gmail-account" },
+      { subsystem: "memory-qmd", status: "skipped", reason: "startup-disabled" },
       { subsystem: "gateway-start-hooks", status: "scheduled" },
       { subsystem: "internal-startup-hook", status: "scheduled" },
       { subsystem: "internal-hooks", status: "loaded" },
@@ -29,6 +31,7 @@ describe("gateway startup outcomes", () => {
     expect(formatGatewayStartupOutcomes(outcomes)).toBe(
       "gateway startup outcomes: internal-hooks=loaded; " +
         "internal-startup-hook=scheduled; gateway-start-hooks=scheduled; " +
+        "memory-qmd=skipped (startup-disabled); " +
         "gmail-watcher=skipped (no-gmail-account); gmail-model=scheduled",
     );
   });
@@ -41,19 +44,21 @@ describe("gateway startup outcomes", () => {
         "internal-hooks=skipped (not-configured)",
         "internal-startup-hook=skipped (no-handlers-loaded)",
         "gateway-start-hooks=skipped (no-handlers-loaded)",
+        "memory-qmd=skipped (not-configured)",
         "gmail-watcher=skipped (hooks-disabled)",
         "gmail-model=skipped (not-configured)",
       ],
     },
     {
-      name: "explicitly disabled internal hooks",
+      name: "explicitly disabled and default-off qmd",
       params: {
         ...inactiveParams,
-        cfg: { hooks: { internal: { enabled: false } } },
+        cfg: { hooks: { internal: { enabled: false } }, memory: { backend: "qmd" } },
       } satisfies GatewayStartupOutcomeRecorderParams,
       expected: [
         "internal-hooks=skipped (hooks-disabled)",
         "internal-startup-hook=skipped (hooks-disabled)",
+        "memory-qmd=skipped (startup-disabled)",
       ],
     },
     {
@@ -65,14 +70,17 @@ describe("gateway startup outcomes", () => {
             internal: { enabled: true },
             gmail: { account: "operator@example.com", model: "openai/gpt-5.5" },
           },
+          memory: { backend: "qmd" },
         },
         gatewayStartHooks: true,
+        memoryStartupMode: "immediate",
         env: {},
       } satisfies GatewayStartupOutcomeRecorderParams,
       expected: [
         "internal-hooks=skipped (no-handlers-loaded)",
         "internal-startup-hook=skipped (no-handlers-loaded)",
         "gateway-start-hooks=scheduled",
+        "memory-qmd=scheduled",
         "gmail-watcher=scheduled",
         "gmail-model=scheduled",
       ],

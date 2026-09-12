@@ -215,6 +215,8 @@ function memorySearchNoteToFinding(message: string): HealthFinding | null {
   let path = "memory.search.provider";
   if (firstLine.includes("No active memory plugin")) {
     path = "plugins.slots.memory";
+  } else if (firstLine.includes("QMD memory backend")) {
+    path = "memory.backend";
   } else if (firstLine.includes("OpenAI-compatible embeddings endpoint")) {
     path = "memory.search.remote.baseUrl";
   } else if (firstLine.includes("OpenAI-compatible embedding model")) {
@@ -237,6 +239,7 @@ export async function collectMemorySearchHealthFindings(
   await noteMemorySearchHealth(ctx.cfg, {
     env: ctx.env,
     includeWorkspaceMemoryHealth: false,
+    skipQmdBinaryProbe: true,
     skipAuthProfileResolution: true,
     gatewayMemoryProbe: { checked: false, ready: false, skipped: true },
     noteFn: (message) => notes.push(String(message)),

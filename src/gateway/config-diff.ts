@@ -27,7 +27,7 @@ export function diffConfigPaths(prev: unknown, next: unknown, prefix = ""): stri
     return paths;
   }
   if (Array.isArray(prev) && Array.isArray(next)) {
-    // Arrays can contain object entries (for example agent bindings);
+    // Arrays can contain object entries (for example memory.qmd.paths/scope.rules);
     // compare structurally so identical values are not reported as changed.
     if (isDeepStrictEqual(prev, next)) {
       return [];

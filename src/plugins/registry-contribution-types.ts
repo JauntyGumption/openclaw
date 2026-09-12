@@ -218,7 +218,13 @@ export type RegisteredMemorySearchManager = Omit<MemorySearchManager, "readFile"
   ): Promise<LegacyMemoryReadResult | MemoryReadResult>;
 };
 
-type MemoryRuntimeBackendConfig = { backend: "builtin" };
+type MemoryRuntimeQmdConfig = {
+  command?: string;
+};
+
+type MemoryRuntimeBackendConfig =
+  | { backend: "builtin" }
+  | { backend: "qmd"; qmd?: MemoryRuntimeQmdConfig };
 
 export type MemoryPluginRuntime = {
   getMemorySearchManager(params: {
@@ -230,9 +236,19 @@ export type MemoryPluginRuntime = {
   }): Promise<{
     manager: RegisteredMemorySearchManager | null;
     debug?: {
-      backend?: "builtin";
+      backend?: "builtin" | "qmd";
       purpose?: "default" | "status" | "cli";
       managerMs?: number;
+      managerCacheState?:
+        | "cached-full-hit"
+        | "cached-full-miss"
+        | "transient-cli"
+        | "transient-status"
+        | "pending-create-wait"
+        | "fallback-builtin"
+        | "recent-failure-cooldown";
+      qmdIdentityHash?: string;
+      failureCode?: "qmd-unavailable";
     };
     error?: string;
   }>;

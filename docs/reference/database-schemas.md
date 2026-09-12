@@ -297,6 +297,7 @@ The general procedure is:
 ### Example: state schema 13 to 12
 
 Schema 13 removed 60 cron-job projection columns, 53 subagent-run projection columns, and five unused indexes. A schema 12 build still expects the exact original column definitions, ordering, and indexes. Adding the removed required columns with defaults produces a different schema that older builds reject, so rebuild both tables instead. Reproject every v12 cron field from canonical `job_json` and `state_json`; abort before rebuilding when either record is malformed.
+Schema 10 added the active transcript projection. Schema 11 added leases, durable delivery, conversation-address state, and heartbeat outcomes. QMD coordination uses rows in `state_leases`; there is no separate QMD table to preserve.
 
 Disable foreign-key enforcement before starting the transaction. The cron-runtime authority table references `cron_jobs` with `ON DELETE CASCADE`, so dropping the original table while enforcement is active would silently delete its authority rows. Re-enable enforcement after the rebuild commits, and verify that `PRAGMA foreign_key_check;` returns no rows before starting the older build.
 

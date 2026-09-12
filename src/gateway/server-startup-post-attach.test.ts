@@ -42,6 +42,7 @@ const hoisted = vi.hoisted(() => {
     status: { root: null, installKind: "unknown" as const, packageManager: "unknown" as const },
     installReceipt: null,
   }));
+  const startGatewayMemoryBackend = vi.fn(async () => {});
   const scheduleGatewayUpdateCheck = vi.fn(() => () => {});
   const logGatewayStartup = vi.fn();
   const activateSubagentRegistry = vi.fn();
@@ -105,6 +106,7 @@ const hoisted = vi.hoisted(() => {
     createInternalHookEvent,
     triggerInternalHook,
     initializeGatewayUpdateStatus,
+    startGatewayMemoryBackend,
     scheduleGatewayUpdateCheck,
     logGatewayStartup,
     activateSubagentRegistry,
@@ -202,6 +204,10 @@ vi.mock("../acp/runtime/registry.js", () => ({
 vi.mock("./server-restart-sentinel.js", () => ({
   refreshLatestUpdateRestartSentinel: hoisted.refreshLatestUpdateRestartSentinel,
   scheduleRestartSentinelWake: hoisted.scheduleRestartSentinelWake,
+}));
+
+vi.mock("./server-startup-memory.js", () => ({
+  startGatewayMemoryBackend: hoisted.startGatewayMemoryBackend,
 }));
 
 vi.mock("./server-startup-log.js", () => ({
@@ -482,6 +488,7 @@ describe("startGatewayPostAttachRuntime", () => {
     hoisted.createInternalHookEvent.mockClear();
     hoisted.triggerInternalHook.mockClear();
     hoisted.initializeGatewayUpdateStatus.mockClear();
+    hoisted.startGatewayMemoryBackend.mockClear();
     hoisted.scheduleGatewayUpdateCheck.mockClear();
     hoisted.logGatewayStartup.mockClear();
     hoisted.activateSubagentRegistry.mockClear();
@@ -626,6 +633,7 @@ describe("startGatewayPostAttachRuntime", () => {
     expect(hoisted.activateSubagentRegistry).toHaveBeenCalledWith(expect.any(Function));
     expect(startupOrder).toEqual(["unlock", "ready", "registry"]);
     expect(methodsAtRecoveryRegistration).toStrictEqual([["chat.history", "models.list"]]);
+    expect(hoisted.startGatewayMemoryBackend).not.toHaveBeenCalled();
   });
 
   it("fences startup recovery as soon as its gateway close prelude begins", async () => {
@@ -743,6 +751,7 @@ describe("startGatewayPostAttachRuntime", () => {
       "gateway startup outcomes: internal-hooks=skipped (hooks-disabled); " +
         "internal-startup-hook=skipped (hooks-disabled); " +
         "gateway-start-hooks=skipped (no-handlers-loaded); " +
+        "memory-qmd=skipped (not-configured); " +
         "gmail-watcher=skipped (hooks-disabled); gmail-model=skipped (not-configured)",
     );
     expect(events).toEqual([
@@ -1553,6 +1562,24 @@ describe("startGatewayPostAttachRuntime", () => {
     expect(onPluginServices).not.toHaveBeenCalled();
     expect(unlockStartupMethods).toHaveBeenCalledOnce();
     expect(onSidecarsReady).toHaveBeenCalledOnce();
+  it("keeps the qmd memory backend lazy by default", async () => {
+    const log = { info: vi.fn(), warn: vi.fn() };
+    await startGatewayPostAttachRuntime({
+      ...createPostAttachParams(),
+      log,
+      gatewayPluginConfigAtStart: {
+        hooks: { internal: { enabled: false } },
+        memory: { backend: "qmd" },
+      } as never,
+    });
+
+    expect(hoisted.startGatewayMemoryBackend).not.toHaveBeenCalled();
+    expect(log.info).toHaveBeenCalledWith(
+      expect.stringContaining("memory-qmd=skipped (startup-disabled)"),
+    );
+    expect(
+      testing.resolveGatewayMemoryStartupPolicy({ memory: { backend: "qmd" } } as never),
+    ).toEqual({ mode: "off" });
   });
 
   it("waits for sidecars by default before returning", async () => {

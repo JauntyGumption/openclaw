@@ -248,6 +248,7 @@ const PROTECTED_GLOSSARY = [
   "kv",
   "network",
   "openai",
+  "qmd",
   "router",
   "s3",
   "vlan",

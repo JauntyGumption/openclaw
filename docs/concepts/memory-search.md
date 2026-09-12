@@ -192,6 +192,11 @@ agent-wide exception for main), `"self"` for strict current-session recall, or
 separate agents for separate trust boundaries. Sandbox spawned-only clamps and
 incognito exclusions still apply.
 
+When using the QMD backend, also set `memory.qmd.sessions.enabled: true` so
+transcripts get exported into the QMD collection; `experimental.sessionMemory`
+and `sources` alone do not export transcripts into QMD. See
+[configuration reference](/reference/memory-config#session-memory-search-experimental).
+
 ## Troubleshooting
 
 **No results?** Run `openclaw memory status` to check the index. If empty, run

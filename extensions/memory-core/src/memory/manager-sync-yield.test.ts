@@ -7,7 +7,7 @@ import {
   type OpenClawConfig,
   type ResolvedMemorySearchConfig,
 } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
-import type { SessionTranscriptCorpusEntry } from "openclaw/plugin-sdk/memory-core-host-engine-sessions";
+import type { SessionTranscriptCorpusEntry } from "openclaw/plugin-sdk/memory-core-host-engine-qmd";
 import {
   ensureMemoryIndexSchema,
   requireNodeSqlite,
@@ -49,9 +49,9 @@ vi.mock("undici", async () => {
   };
 });
 
-vi.mock("openclaw/plugin-sdk/memory-core-host-engine-sessions", async (importOriginal) => {
+vi.mock("openclaw/plugin-sdk/memory-core-host-engine-qmd", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("openclaw/plugin-sdk/memory-core-host-engine-sessions")>();
+    await importOriginal<typeof import("openclaw/plugin-sdk/memory-core-host-engine-qmd")>();
   const basename = (filePath: string) => filePath.split(/[\\/]/).pop() ?? filePath;
   return {
     ...actual,

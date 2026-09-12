@@ -213,10 +213,11 @@ describe("MemoryMemoriesElement", () => {
     }
   });
 
-  it("keeps session, absolute, and escaping paths non-expandable", async () => {
+  it("keeps session, QMD, absolute, and escaping paths non-expandable", async () => {
     const nonExpandable = [
       { ...result, path: "sessions/main/session-1.jsonl", source: "sessions" as const },
       { ...result, path: "sessions/main/mislabeled.jsonl" },
+      { ...result, path: "qmd/workspace-main/memory/notes.md" },
       { ...result, path: "/external/MEMORY.md" },
       { ...result, path: "C:\\external\\MEMORY.md" },
       { ...result, path: "memory/../outside.md" },
@@ -233,10 +234,10 @@ describe("MemoryMemoriesElement", () => {
     try {
       await typeQuery(element, "memory");
       submit(element);
-      await waitForFast(() => expect(element.querySelectorAll("article")).toHaveLength(6));
+      await waitForFast(() => expect(element.querySelectorAll("article")).toHaveLength(7));
 
       expect(element.querySelectorAll("article > button")).toHaveLength(1);
-      expect(element.querySelectorAll("article > div.settings-row")).toHaveLength(5);
+      expect(element.querySelectorAll("article > div.settings-row")).toHaveLength(6);
       expect(
         request.mock.calls.filter(([method]) => method === "agents.workspace.get"),
       ).toHaveLength(0);

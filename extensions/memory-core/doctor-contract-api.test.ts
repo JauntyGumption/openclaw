@@ -97,16 +97,6 @@ function qmdFileLockMigration() {
   return migration;
 }
 
-function qmdWorkspaceMigration() {
-  const migration = stateMigrations.find(
-    (entry) => entry.id === "memory-core-qmd-workspace-retired",
-  );
-  if (!migration) {
-    throw new Error("expected memory-core retired QMD workspace migration");
-  }
-  return migration;
-}
-
 function vectorToBlob(embedding: number[]): Buffer {
   return Buffer.from(new Float32Array(embedding).buffer);
 }

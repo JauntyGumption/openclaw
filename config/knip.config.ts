@@ -329,8 +329,6 @@ const rootToolingAndWorkspaceDependencies = [
   // The scripts typecheck compiles UI Vite config against the root Vite dependency.
   "postcss",
   "signal-utils",
-  // Root declaration builds compile terminal-core source and resolve this package from root.
-  "string-width",
 ] as const;
 
 function bundledPluginWorkspace(extraEntries: readonly string[] = []) {

@@ -4,9 +4,11 @@ import type { MemorySearchResult } from "openclaw/plugin-sdk/memory-core-host-ru
 import { describe, expect, it, vi } from "vitest";
 
 const managerDebug = {
-  backend: "builtin" as const,
+  backend: "qmd" as const,
   purpose: "default" as const,
   managerMs: 7,
+  managerCacheState: "cached-full-hit" as const,
+  qmdIdentityHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 };
 
 const getMemorySearchManagerMock = vi.hoisted(() =>

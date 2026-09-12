@@ -4,7 +4,7 @@ import {
   buildSessionEntry,
   sessionPathForSessionIdentity,
   type SessionTranscriptCorpusEntry,
-} from "openclaw/plugin-sdk/memory-core-host-engine-sessions";
+} from "openclaw/plugin-sdk/memory-core-host-engine-qmd";
 import {
   MEMORY_INDEX_FTS_TABLE,
   runWithConcurrency,

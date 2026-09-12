@@ -351,9 +351,9 @@ describe("Ghost reminder bug (issue #13317)", () => {
       replyText: "Relay this cron update now",
       reason: "interval",
       enqueue: (sessionKey) => {
-        enqueueSystemEvent("Cron: memory maintenance completed", {
+        enqueueSystemEvent("Cron: QMD maintenance completed", {
           sessionKey,
-          contextKey: "cron:memory-maintenance",
+          contextKey: "cron:qmd-maintenance",
         });
       },
     });
@@ -361,7 +361,7 @@ describe("Ghost reminder bug (issue #13317)", () => {
     expect(replyCallCount).toBe(1);
     expect(calledCtx?.InternalTurnSource).toBe("cron");
     expect(calledCtx?.Body).toContain("scheduled reminder has been triggered");
-    expect(calledCtx?.Body).toContain("Cron: memory maintenance completed");
+    expect(calledCtx?.Body).toContain("Cron: QMD maintenance completed");
     expect(calledCtx?.Body).not.toContain("Read HEARTBEAT.md");
     expect(sendTelegram).toHaveBeenCalled();
   });
@@ -578,9 +578,9 @@ describe("Ghost reminder bug (issue #13317)", () => {
         .mockResolvedValueOnce({ text: "HEARTBEAT_OK" });
       const { cfg, sessionKey } = await createConfig({ tmpDir, storePath });
 
-      enqueueSystemEvent("Cron: memory maintenance completed", {
+      enqueueSystemEvent("Cron: QMD maintenance completed", {
         sessionKey,
-        contextKey: "cron:memory-maintenance",
+        contextKey: "cron:qmd-maintenance",
       });
 
       const first = await runHeartbeatOnce({
@@ -619,15 +619,26 @@ describe("Ghost reminder bug (issue #13317)", () => {
       expect(firstCtx.InternalTurnSource).toBe("cron");
       expect(firstCtx.Body).toContain("Cron: memory maintenance completed");
       expect(secondCtx.InternalTurnSource).toBe("heartbeat");
+      const firstCtx = mockCallAt(getReplySpy, 0, "first heartbeat reply")[0] as {
+        Provider?: string;
+        Body?: string;
+      };
+      const secondCtx = mockCallAt(getReplySpy, 1, "second heartbeat reply")[0] as {
+        Provider?: string;
+        Body?: string;
+      };
+      expect(firstCtx.Provider).toBe("cron-event");
+      expect(firstCtx.Body).toContain("Cron: QMD maintenance completed");
+      expect(secondCtx.Provider).toBe("heartbeat");
       expect(secondCtx.Body).toContain("Heartbeat monitor scratch:");
-      expect(secondCtx.Body).not.toContain("Cron: memory maintenance completed");
+      expect(secondCtx.Body).not.toContain("Cron: QMD maintenance completed");
     });
   });
 
   it("retains a cron reminder until a suppressed heartbeat can actually deliver it", async () => {
     await withTempHeartbeatSandbox(async ({ tmpDir, storePath }) => {
       const { cfg, sessionKey } = await createConfig({ tmpDir, storePath });
-      const reminder = "Cron: memory maintenance completed";
+      const reminder = "Cron: QMD maintenance completed";
       const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         chatId: "155462274",
@@ -639,7 +650,7 @@ describe("Ghost reminder bug (issue #13317)", () => {
 
       enqueueSystemEvent(reminder, {
         sessionKey,
-        contextKey: "cron:memory-maintenance",
+        contextKey: "cron:qmd-maintenance",
       });
 
       const runOnce = async () =>

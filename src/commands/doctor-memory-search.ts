@@ -30,6 +30,10 @@ import {
   resolveMemoryDreamingConfig,
   resolveMemoryDreamingPluginConfig,
 } from "../memory-host-sdk/dreaming.js";
+import {
+  checkQmdBinaryAvailability,
+  resolveQmdBinaryUnavailableReason,
+} from "../memory-host-sdk/engine-qmd.js";
 import { resolveRememberAcrossConversations } from "../memory-host-sdk/host/config-utils.js";
 import { hasConfiguredMemorySecretInput } from "../memory-host-sdk/secret.js";
 import {
@@ -64,6 +68,9 @@ import { isRecord } from "./doctor/shared/legacy-config-record-shared.js";
 
 type RuntimeMemoryAuditContext = {
   workspaceDir?: string;
+  backend?: string;
+  dbPath?: string;
+  qmdCollections?: number;
 };
 
 type MemoryDoctorAgentScope = {
@@ -217,8 +224,14 @@ async function resolveRuntimeMemoryAuditContext(
   }
   try {
     const status = manager.status();
+    const customQmd =
+      isRecord(status.custom) && isRecord(status.custom.qmd) ? status.custom.qmd : null;
     return {
       workspaceDir: status.workspaceDir?.trim(),
+      backend: status.backend,
+      dbPath: status.dbPath,
+      qmdCollections:
+        typeof customQmd?.collections === "number" ? customQmd.collections : undefined,
     };
   } finally {
     await manager.close?.().catch(() => undefined);
@@ -272,7 +285,16 @@ export async function noteMemoryRecallHealth(cfg: OpenClawConfig): Promise<void>
       if (!workspaceDir) {
         continue;
       }
-      const audit = await auditShortTermPromotionArtifacts({ workspaceDir });
+      const audit = await auditShortTermPromotionArtifacts({
+        workspaceDir,
+        qmd:
+          context?.backend === "qmd"
+            ? {
+                dbPath: context.dbPath,
+                collections: context.qmdCollections,
+              }
+            : undefined,
+      });
       const message = buildMemoryRecallIssueNote(audit);
       if (message) {
         note(formatAgentMessage(scope.agentId, labelAgents, message), "Memory search");
@@ -325,7 +347,16 @@ export async function maybeRepairMemoryRecallHealth(params: {
       if (!workspaceDir) {
         continue;
       }
-      const audit = await auditShortTermPromotionArtifacts({ workspaceDir });
+      const audit = await auditShortTermPromotionArtifacts({
+        workspaceDir,
+        qmd:
+          context?.backend === "qmd"
+            ? {
+                dbPath: context.dbPath,
+                collections: context.qmdCollections,
+              }
+            : undefined,
+      });
       const hasFixableRecallIssue = audit.issues.some((issue) => issue.fixable);
       if (hasFixableRecallIssue) {
         const approved = await params.prompter.confirmRuntimeRepair({
@@ -504,7 +535,9 @@ function noteRememberAcrossConversationsHealth(params: {
 
 /**
  * Check whether memory search has a usable embedding provider.
- * Runs as part of `openclaw doctor` using config-only checks where possible.
+ * Runs as part of `openclaw doctor` — config-only checks where possible;
+ * may spawn a short-lived probe process when `memory.backend=qmd` to verify
+ * the configured `qmd` binary is available.
  */
 type MemorySearchHealthOptions = {
   gatewayMemoryProbe?: {
@@ -516,6 +549,7 @@ type MemorySearchHealthOptions = {
   };
   noteFn?: typeof note;
   includeWorkspaceMemoryHealth?: boolean;
+  skipQmdBinaryProbe?: boolean;
   skipAuthProfileResolution?: boolean;
   env?: NodeJS.ProcessEnv;
 };
@@ -555,7 +589,7 @@ async function noteMemorySearchHealthForAgent(
   scope: MemoryDoctorAgentScope,
   opts: MemorySearchHealthOptions,
 ): Promise<void> {
-  const { agentId, agentDir } = scope;
+  const { agentId, agentDir, workspaceDir } = scope;
   const noteFn = opts.noteFn ?? note;
   const resolved = resolveMemorySearchConfig(cfg, agentId);
 
@@ -597,6 +631,8 @@ async function noteMemorySearchHealthForAgent(
   });
   const hasRemoteApiKey = hasConfiguredMemorySecretInput(resolved.remote?.apiKey);
 
+  // QMD backend handles embeddings internally (e.g. embeddinggemma) — no
+  // separate embedding provider is needed. Skip the provider check entirely.
   const backendConfig = resolveActiveMemoryBackendConfig({ cfg, agentId });
   if (!backendConfig) {
     if (opts?.gatewayMemoryProbe?.checked && opts.gatewayMemoryProbe.ready) {
@@ -608,6 +644,66 @@ async function noteMemorySearchHealthForAgent(
     noteFn("No active memory plugin is registered for the current config.", "Memory search");
     return;
   }
+  if (backendConfig.backend === "qmd") {
+    if (opts?.skipQmdBinaryProbe !== true) {
+      const qmdCheck = await checkQmdBinaryAvailability({
+        command: backendConfig.qmd?.command ?? "qmd",
+        env: process.env,
+        cwd: workspaceDir,
+      });
+      if (!qmdCheck.available) {
+        const workspaceProbeFailed =
+          resolveQmdBinaryUnavailableReason(qmdCheck) === "workspace-cwd";
+        const probeError = qmdCheck.error.trim();
+        noteFn(
+          [
+            workspaceProbeFailed
+              ? "QMD memory backend is configured, but the agent workspace directory could not be used for the QMD startup probe."
+              : `QMD memory backend is configured, but the qmd binary could not be started (${backendConfig.qmd?.command ?? "qmd"}).`,
+            probeError ? `Probe error: ${probeError}` : null,
+            "",
+            "Fix (pick one):",
+            workspaceProbeFailed
+              ? "- Create the missing workspace directory or update the agent workspace path to an existing directory."
+              : "- Install the supported QMD package: npm install -g @tobilu/qmd (or bun install -g @tobilu/qmd)",
+            workspaceProbeFailed
+              ? "- Verify the resolved workspace path for the affected agent before retrying."
+              : `- Set an explicit binary path: ${formatCliCommand("openclaw config set memory.qmd.command /absolute/path/to/qmd")}`,
+            `- Or switch back to builtin memory: ${formatCliCommand("openclaw config set memory.backend builtin")}`,
+            "",
+            `Verify: ${formatCliCommand("openclaw memory status --deep")}`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          "Memory search",
+        );
+      }
+    }
+    if (
+      resolved.sources?.includes("sessions") &&
+      !resolved.rememberAcrossConversations &&
+      cfg.memory?.qmd?.sessions?.enabled !== true
+    ) {
+      noteFn(
+        [
+          "QMD memory backend is configured and the default agent resolves memory.search.sources with sessions,",
+          "but QMD session transcript export is not enabled (memory.qmd.sessions.enabled is not true).",
+          "Session transcript hits will not appear in QMD-backed memory search until QMD session export is enabled.",
+          "",
+          "Fix (pick one):",
+          `- Enable QMD session export: ${formatCliCommand(
+            "openclaw config set memory.qmd.sessions.enabled true",
+          )}`,
+          "- Or remove sessions from the default agent's memory.search.sources if QMD session recall is not intended.",
+          "",
+          `Verify: ${formatCliCommand("openclaw memory status --deep")}`,
+        ].join("\n"),
+        "Memory search",
+      );
+    }
+    return;
+  }
+
   if (provider === "none") {
     return;
   }

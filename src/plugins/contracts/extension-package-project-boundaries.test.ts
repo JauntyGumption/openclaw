@@ -59,7 +59,7 @@ type PackageJson = {
 const MEMORY_HOST_SDK_EXPORTS = [
   "./engine-embeddings",
   "./engine-foundation",
-  "./engine-sessions",
+  "./engine-qmd",
   "./engine-storage",
   "./multimodal",
   "./query",
@@ -72,6 +72,14 @@ const MEMORY_HOST_SDK_ALLOWED_CORE_BRIDGE_FILES = [
   // Type-only alias to the canonical embedding provider contract.
   "packages/memory-host-sdk/src/host/embeddings.types.ts",
   "packages/memory-host-sdk/src/host/error-utils.ts",
+  "packages/memory-host-sdk/src/host/config-utils.ts",
+  "packages/memory-host-sdk/src/host/openclaw-runtime-auth.ts",
+  "packages/memory-host-sdk/src/host/openclaw-runtime-kysely.ts",
+  "packages/memory-host-sdk/src/host/openclaw-runtime-network.ts",
+  "packages/memory-host-sdk/src/host/openclaw-runtime-sqlite.ts",
+  "packages/memory-host-sdk/src/host/openclaw-runtime.ts",
+] as const;
+const MEMORY_HOST_SDK_RUNTIME_ADAPTER_FILES = [
   "packages/memory-host-sdk/src/host/openclaw-runtime-agent.ts",
   "packages/memory-host-sdk/src/host/openclaw-runtime-auth.ts",
   "packages/memory-host-sdk/src/host/openclaw-runtime-config.ts",
