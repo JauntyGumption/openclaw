@@ -1,0 +1,502 @@
+From 3c16bdcb6d234511c6407f2addebdf1c2308fbac Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 13 Sep 2026 03:11:38 +0200
+Subject: [PATCH] fix(qmd): align restored plugin boundaries
+
+---
+ extensions/active-memory/config.ts            |   1 +
+ .../memory-core/src/cli-status.runtime.ts     |   2 +-
+ .../memory-core/src/doctor-health.test.ts     |  16 ++
+ .../src/doctor-vector-index-provider.ts       |   3 +
+ .../src/memory-tool-manager.test-mocks.ts     |   8 -
+ .../memory-core/src/memory/qmd-manager-io.ts  |   6 +-
+ .../qmd-manager.slugified-paths.test.ts       |   3 +
+ .../src/memory/search-manager.test.ts         |   3 -
+ .../memory-core/src/memory/search-manager.ts  |   2 +-
+ .../doctor-vector-index-provider.test.ts      |  86 --------
+ .../migration/doctor-vector-index-provider.ts | 198 ------------------
+ 11 files changed, 28 insertions(+), 300 deletions(-)
+ delete mode 100644 extensions/memory-core/src/migration/doctor-vector-index-provider.test.ts
+ delete mode 100644 extensions/memory-core/src/migration/doctor-vector-index-provider.ts
+
+diff --git a/extensions/active-memory/config.ts b/extensions/active-memory/config.ts
+index 86c3922d7c3..1ae1f77a5ea 100644
+--- a/extensions/active-memory/config.ts
++++ b/extensions/active-memory/config.ts
+@@ -7,6 +7,7 @@ import {
+ } from "openclaw/plugin-sdk/number-runtime";
+ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+ import {
++  asRecord,
+   asOptionalRecord,
+   normalizeLowercaseStringOrEmpty,
+   normalizeOptionalString,
+diff --git a/extensions/memory-core/src/cli-status.runtime.ts b/extensions/memory-core/src/cli-status.runtime.ts
+index 61fc7c45ffc..2359f68b818 100644
+--- a/extensions/memory-core/src/cli-status.runtime.ts
++++ b/extensions/memory-core/src/cli-status.runtime.ts
+@@ -6,7 +6,7 @@ import {
+   resolveMemoryLightDreamingConfig,
+   resolveMemoryRemDreamingConfig,
+ } from "openclaw/plugin-sdk/memory-core-host-status";
+-import { asNullableRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
++import { asNullableRecord, asRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+ import {
+   formatAuditCounts,
+   formatExtraPaths,
+diff --git a/extensions/memory-core/src/doctor-health.test.ts b/extensions/memory-core/src/doctor-health.test.ts
+index d03664fee51..651b17f19df 100644
+--- a/extensions/memory-core/src/doctor-health.test.ts
++++ b/extensions/memory-core/src/doctor-health.test.ts
+@@ -177,6 +177,22 @@ describe("managed local embedding setup health check", () => {
+     expect(inspect.mock.calls.map(([params]) => params.provider)).toEqual(["local"]);
+   });
+ 
++  it("ignores a stale builtin semantic index when qmd owns memory", async () => {
++    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "memory-setup-qmd-"));
++    roots.add(stateDir);
++    await createSemanticIndex(stateDir);
++    const inspect = vi.fn<InspectManagedLocalEmbeddingSetup>(async () => ({
++      provider: "local",
++      reason: "Local embeddings need the managed llama.cpp server config.",
++    }));
++    const check = captureCheck(inspect);
++    const checkContext = context(stateDir, "local");
++    checkContext.cfg.memory = { ...checkContext.cfg.memory, backend: "qmd" };
++
++    await expect(check.detect(checkContext)).resolves.toEqual([]);
++    expect(inspect).not.toHaveBeenCalled();
++  });
++
+   it("reports a structured blocker when the local provider plugin is unavailable", async () => {
+     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "memory-setup-plugin-missing-"));
+     roots.add(stateDir);
+diff --git a/extensions/memory-core/src/doctor-vector-index-provider.ts b/extensions/memory-core/src/doctor-vector-index-provider.ts
+index d932452a820..4bca6bef87b 100644
+--- a/extensions/memory-core/src/doctor-vector-index-provider.ts
++++ b/extensions/memory-core/src/doctor-vector-index-provider.ts
+@@ -99,6 +99,9 @@ export async function collectVectorProviderFindings(
+   },
+   inspectProvider: InspectConfiguredProvider,
+ ): Promise<VectorProviderFinding[]> {
++  if (params.config.memory?.backend === "qmd") {
++    return [];
++  }
+   const findings: VectorProviderFinding[] = [];
+   for (const agentId of listConfiguredAgentIds(params.config)) {
+     // A custom agentDir does not move the canonical per-agent memory index.
+diff --git a/extensions/memory-core/src/memory-tool-manager.test-mocks.ts b/extensions/memory-core/src/memory-tool-manager.test-mocks.ts
+index bb0d1aff533..403677e81d5 100644
+--- a/extensions/memory-core/src/memory-tool-manager.test-mocks.ts
++++ b/extensions/memory-core/src/memory-tool-manager.test-mocks.ts
+@@ -19,14 +19,6 @@ type SearchImpl = (opts?: {
+   [key: symbol]: ((action: "pause" | "resume" | "handoff") => void) | undefined;
+ }) => Promise<unknown[]>;
+ export type MemoryReadParams = { relPath: string; from?: number; lines?: number };
+-type MemoryReadResult = {
+-  text: string;
+-  path: string;
+-  truncated?: boolean;
+-  from?: number;
+-  lines?: number;
+-  nextFrom?: number;
+-};
+ type MemoryBackend = "builtin" | "qmd";
+ type MemoryManagerDebug = Awaited<ReturnType<typeof getMemorySearchManager>>["debug"];
+ type MemoryManagerParams = {
+diff --git a/extensions/memory-core/src/memory/qmd-manager-io.ts b/extensions/memory-core/src/memory/qmd-manager-io.ts
+index c9f71321289..8d67db9872b 100644
+--- a/extensions/memory-core/src/memory/qmd-manager-io.ts
++++ b/extensions/memory-core/src/memory/qmd-manager-io.ts
+@@ -48,7 +48,7 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
+       throw err;
+     }
+     if (statResult.missing) {
+-      return { text: "", path: relPath };
++      return { status: "not_found", text: "", path: relPath };
+     }
+     if (params.from !== undefined || params.lines !== undefined) {
+       const startLine = normalizePositiveInteger(params.from, 1);
+@@ -58,7 +58,7 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
+       );
+       const partial = await this.readPartialText(absPath, startLine, requestedCount);
+       if (partial.missing) {
+-        return { text: "", path: relPath };
++        return { status: "not_found", text: "", path: relPath };
+       }
+       return buildMemoryReadResultFromSlice({
+         selectedLines: partial.selectedLines,
+@@ -71,7 +71,7 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
+     }
+     const full = await this.readFullText(absPath);
+     if (full.missing) {
+-      return { text: "", path: relPath };
++      return { status: "not_found", text: "", path: relPath };
+     }
+     return buildMemoryReadResult({
+       content: full.text,
+diff --git a/extensions/memory-core/src/memory/qmd-manager.slugified-paths.test.ts b/extensions/memory-core/src/memory/qmd-manager.slugified-paths.test.ts
+index ca74d1d1876..a70d202eec3 100644
+--- a/extensions/memory-core/src/memory/qmd-manager.slugified-paths.test.ts
++++ b/extensions/memory-core/src/memory/qmd-manager.slugified-paths.test.ts
+@@ -284,6 +284,7 @@ describe("QmdMemoryManager slugified path resolution", () => {
+ 
+     const result = expectDefined(results[0], "slugified QMD search result");
+     await expect(manager.readFile({ relPath: result.path })).resolves.toEqual({
++      status: "ok",
+       path: actualRelative,
+       text: "line-1\nline-2\nline-3",
+       from: 1,
+@@ -362,6 +363,7 @@ describe("QmdMemoryManager slugified path resolution", () => {
+ 
+     const result = expectDefined(results[0], "vault QMD search result");
+     await expect(manager.readFile({ relPath: result.path })).resolves.toEqual({
++      status: "ok",
+       path: `qmd/${collectionName}/${actualRelative}`,
+       text: "vault memory",
+       from: 1,
+@@ -427,6 +429,7 @@ describe("QmdMemoryManager slugified path resolution", () => {
+ 
+     const result = expectDefined(results[0], "exact QMD search result");
+     await expect(manager.readFile({ relPath: result.path })).resolves.toEqual({
++      status: "ok",
+       path: exactRelative,
+       text: "exact slugified path",
+       from: 1,
+diff --git a/extensions/memory-core/src/memory/search-manager.test.ts b/extensions/memory-core/src/memory/search-manager.test.ts
+index 9b157e5293a..5671c9a1d34 100644
+--- a/extensions/memory-core/src/memory/search-manager.test.ts
++++ b/extensions/memory-core/src/memory/search-manager.test.ts
+@@ -922,7 +922,6 @@ describe("getMemorySearchManager caching", () => {
+     expect(secondPrimary.close).toHaveBeenCalledTimes(2);
+     expect(firstPrimary.close).toHaveBeenCalledTimes(2);
+     expect(mockCloseMemoryIndexManagersForAgent).toHaveBeenCalledWith({
+-      cfg: firstCfg,
+       agentId,
+     });
+ 
+@@ -1488,7 +1487,6 @@ describe("getMemorySearchManager caching", () => {
+     const mainManager = requireManager(main);
+     const otherManager = requireManager(other);
+ 
+-    expect(closeMemoryIndexManagersForAgent).toHaveBeenCalledWith({ agentId: "main" });
+     await closeMemorySearchManager({ cfg: mainCfg, agentId: "main" });
+ 
+     expect(mockPrimary.close).toHaveBeenCalledTimes(1);
+@@ -1530,7 +1528,6 @@ describe("getMemorySearchManager caching", () => {
+     await closeMemorySearchManager({ cfg, agentId: "main" });
+ 
+     expect(mockCloseMemoryIndexManagersForAgent).toHaveBeenCalledWith({
+-      cfg,
+       agentId: "main",
+     });
+   });
+diff --git a/extensions/memory-core/src/memory/search-manager.ts b/extensions/memory-core/src/memory/search-manager.ts
+index 050ead748ce..454acbc7f55 100644
+--- a/extensions/memory-core/src/memory/search-manager.ts
++++ b/extensions/memory-core/src/memory/search-manager.ts
+@@ -779,7 +779,7 @@ async function closeMemorySearchManagerWithinLifecycle(params: {
+   if (managerRuntimeLoader.peek()) {
+     try {
+       const { closeMemoryIndexManagersForAgent } = await loadManagerRuntime();
+-      await closeMemoryIndexManagersForAgent({ cfg: params.cfg, agentId: normalizedAgentId });
++      await closeMemoryIndexManagersForAgent({ agentId: normalizedAgentId });
+     } catch (err) {
+       if (!closeFailed) {
+         closeError = err;
+diff --git a/extensions/memory-core/src/migration/doctor-vector-index-provider.test.ts b/extensions/memory-core/src/migration/doctor-vector-index-provider.test.ts
+deleted file mode 100644
+index 4c008762418..00000000000
+--- a/extensions/memory-core/src/migration/doctor-vector-index-provider.test.ts
++++ /dev/null
+@@ -1,86 +0,0 @@
+-import fs from "node:fs/promises";
+-import os from "node:os";
+-import path from "node:path";
+-import { DatabaseSync } from "node:sqlite";
+-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+-import type { PluginDoctorStateMigrationContext } from "openclaw/plugin-sdk/runtime-doctor-migrations";
+-import { afterEach, describe, expect, it } from "vitest";
+-import { vectorIndexProviderDiagnostic } from "./doctor-vector-index-provider.js";
+-import { vectorIndexProviderDiagnosticTesting } from "./doctor-vector-index-provider.test-support.js";
+-
+-const roots = new Set<string>();
+-
+-afterEach(async () => {
+-  vectorIndexProviderDiagnosticTesting.reset();
+-  await Promise.all([...roots].map((root) => fs.rm(root, { recursive: true, force: true })));
+-  roots.clear();
+-});
+-
+-describe("memory vector index provider doctor diagnostic", () => {
+-  it("reports a protected semantic index when the configured provider cannot bootstrap", async () => {
+-    vectorIndexProviderDiagnosticTesting.setInspectConfiguredProviderForTest(async () => ({
+-      provider: "openai",
+-      reason: "OpenAI API key missing",
+-    }));
+-    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-memory-vector-doctor-"));
+-    roots.add(stateDir);
+-    const agentPath = path.join(stateDir, "agents", "main", "agent", "openclaw-agent.sqlite");
+-    await fs.mkdir(path.dirname(agentPath), { recursive: true });
+-    const db = new DatabaseSync(agentPath);
+-    db.exec("CREATE TABLE memory_index_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT");
+-    db.prepare("INSERT INTO memory_index_meta (key, value) VALUES (?, ?)").run(
+-      "memory_index_meta_v1",
+-      JSON.stringify({ model: "text-embedding-3-small", vectorDims: 1536 }),
+-    );
+-    db.close();
+-    const config = {
+-      memory: {},
+-      agents: { entries: {} },
+-    } satisfies OpenClawConfig;
+-    const params = {
+-      config,
+-      env: { OPENCLAW_STATE_DIR: stateDir },
+-      stateDir,
+-      oauthDir: path.join(stateDir, "oauth"),
+-      context: {} as PluginDoctorStateMigrationContext,
+-    };
+-
+-    const preview = await vectorIndexProviderDiagnostic.detectLegacyState(params);
+-    const result = await vectorIndexProviderDiagnostic.migrateLegacyState(params);
+-
+-    expect(preview?.preview.join("\n")).toContain(
+-      "Memory index for agent main uses vector model text-embedding-3-small",
+-    );
+-    expect(preview?.preview.join("\n")).toContain("memory.search.remote.apiKey");
+-    expect(preview?.preview.join("\n")).toContain("memory.search.provider");
+-    expect(preview?.preview.join("\n")).toContain(
+-      "Memory sync will abort rather than overwrite this semantic index with FTS-only data",
+-    );
+-    expect(result).toEqual({
+-      changes: [],
+-      warnings: [expect.stringContaining('embedding provider "openai" cannot initialize')],
+-    });
+-
+-    await expect(
+-      vectorIndexProviderDiagnostic.detectLegacyState({
+-        ...params,
+-        config: { ...config, memory: { backend: "qmd" } },
+-      }),
+-    ).resolves.toBeNull();
+-    await expect(
+-      vectorIndexProviderDiagnostic.detectLegacyState({
+-        ...params,
+-        config: {
+-          ...config,
+-          memory: {
+-            search: {
+-              remote: {
+-                apiKey: { source: "env", provider: "default", id: "OPENAI_API_KEY" },
+-              },
+-            },
+-          },
+-        },
+-      }),
+-    ).resolves.toBeNull();
+-  });
+-});
+diff --git a/extensions/memory-core/src/migration/doctor-vector-index-provider.ts b/extensions/memory-core/src/migration/doctor-vector-index-provider.ts
+deleted file mode 100644
+index d7208b1a8c6..00000000000
+--- a/extensions/memory-core/src/migration/doctor-vector-index-provider.ts
++++ /dev/null
+@@ -1,198 +0,0 @@
+-import fs from "node:fs";
+-import path from "node:path";
+-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+-import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
+-import type { PluginDoctorStateMigration } from "openclaw/plugin-sdk/runtime-doctor-migrations";
+-// sqlite-runtime re-exports the agent-db/kysely graph; keep it lazy so doctor
+-// enumeration does not cold-load it with this closure.
+-
+-const MEMORY_INDEX_META_KEY = "memory_index_meta_v1";
+-
+-type ProviderFailure = { provider: string; reason: string };
+-type VectorProviderFinding = ProviderFailure & {
+-  agentId: string;
+-  model: string;
+-  configPrefix: string;
+-};
+-
+-async function inspectConfiguredProvider(params: {
+-  config: OpenClawConfig;
+-  agentId: string;
+-  env: NodeJS.ProcessEnv;
+-  agentDatabasePath: string;
+-}): Promise<ProviderFailure | null> {
+-  const [{ resolveAgentConfig }, foundation, embeddings, providerState] = await Promise.all([
+-    import("openclaw/plugin-sdk/agent-runtime"),
+-    import("openclaw/plugin-sdk/memory-core-host-engine-foundation"),
+-    import("../memory/embeddings.js"),
+-    import("../memory/manager-provider-state.js"),
+-  ]);
+-  let settings: ReturnType<typeof foundation.resolveMemorySearchConfig>;
+-  try {
+-    settings = foundation.resolveMemorySearchConfig(params.config, params.agentId);
+-  } catch (error) {
+-    return {
+-      provider: params.config.memory?.search?.provider ?? "openai",
+-      reason: formatErrorMessage(error),
+-    };
+-  }
+-  if (!settings || settings.provider === "none") {
+-    return null;
+-  }
+-  try {
+-    const configuredAgentDir = resolveAgentConfig(params.config, params.agentId)?.agentDir?.trim();
+-    const result = await embeddings.createEmbeddingProvider({
+-      config: params.config,
+-      agentDir: configuredAgentDir
+-        ? foundation.resolveUserPath(configuredAgentDir, params.env)
+-        : path.dirname(params.agentDatabasePath),
+-      ...providerState.resolveMemoryPrimaryProviderRequest({ settings }),
+-    });
+-    await result.provider?.close?.();
+-    return result.provider
+-      ? null
+-      : {
+-          provider: settings.provider,
+-          reason: result.providerUnavailableReason ?? "provider did not initialize",
+-        };
+-  } catch (error) {
+-    return { provider: settings.provider, reason: formatErrorMessage(error) };
+-  }
+-}
+-
+-const deps = { inspectConfiguredProvider };
+-const testing = {
+-  setInspectConfiguredProviderForTest(inspect: typeof inspectConfiguredProvider): void {
+-    deps.inspectConfiguredProvider = inspect;
+-  },
+-  reset(): void {
+-    deps.inspectConfiguredProvider = inspectConfiguredProvider;
+-  },
+-};
+-
+-if (process.env.VITEST || process.env.NODE_ENV === "test") {
+-  (globalThis as Record<PropertyKey, unknown>)[
+-    Symbol.for("openclaw.memoryCoreVectorIndexProviderDiagnosticTestApi")
+-  ] = testing;
+-}
+-
+-function listConfiguredAgentIds(config: OpenClawConfig): string[] {
+-  const ids = new Set(Object.keys(config.agents?.entries ?? {}));
+-  for (const entry of config.agents?.list ?? []) {
+-    if (entry.id.trim()) {
+-      ids.add(entry.id.trim());
+-    }
+-  }
+-  return ids.size > 0 ? [...ids] : ["main"];
+-}
+-
+-async function readExistingVectorModel(databasePath: string): Promise<string | null> {
+-  if (!fs.existsSync(databasePath)) {
+-    return null;
+-  }
+-  const { openNodeSqliteDatabase } = await import("openclaw/plugin-sdk/sqlite-runtime");
+-  let db: ReturnType<typeof openNodeSqliteDatabase> | undefined;
+-  try {
+-    db = openNodeSqliteDatabase(databasePath, { readOnly: true });
+-    const row = db
+-      .prepare("SELECT value FROM memory_index_meta WHERE key = ?")
+-      .get(MEMORY_INDEX_META_KEY) as { value?: unknown } | undefined;
+-    const parsed = typeof row?.value === "string" ? JSON.parse(row.value) : null;
+-    const model =
+-      parsed && typeof parsed === "object" && typeof parsed.model === "string"
+-        ? parsed.model.trim()
+-        : "";
+-    return model && model !== "fts-only" ? model : null;
+-  } catch {
+-    return null;
+-  } finally {
+-    db?.close();
+-  }
+-}
+-
+-function resolveConfigPrefix(config: OpenClawConfig, agentId: string): string {
+-  if (config.agents?.entries?.[agentId]?.memory?.search) {
+-    return `agents.entries.${agentId}.memory.search`;
+-  }
+-  if (config.agents?.list?.find((entry) => entry.id === agentId)?.memory?.search) {
+-    return `agents.list[].memory.search (agent id ${agentId})`;
+-  }
+-  return "memory.search";
+-}
+-
+-function hasConfiguredMemorySecretRef(config: OpenClawConfig, agentId: string): boolean {
+-  const agent =
+-    config.agents?.entries?.[agentId] ?? config.agents?.list?.find((entry) => entry.id === agentId);
+-  const apiKey = agent?.memory?.search?.remote?.apiKey ?? config.memory?.search?.remote?.apiKey;
+-  return apiKey !== null && typeof apiKey === "object";
+-}
+-
+-async function collectVectorProviderFindings(params: {
+-  config: OpenClawConfig;
+-  env: NodeJS.ProcessEnv;
+-  stateDir: string;
+-}): Promise<VectorProviderFinding[]> {
+-  if (params.config.memory?.backend === "qmd") {
+-    return [];
+-  }
+-  const findings: VectorProviderFinding[] = [];
+-  for (const agentId of listConfiguredAgentIds(params.config)) {
+-    // Memory indexes always live in the canonical per-agent state DB; a custom
+-    // agentDir affects provider credential lookup, not index storage.
+-    const agentDatabasePath = path.join(
+-      params.stateDir,
+-      "agents",
+-      agentId,
+-      "agent",
+-      "openclaw-agent.sqlite",
+-    );
+-    const model = await readExistingVectorModel(agentDatabasePath);
+-    if (!model) {
+-      continue;
+-    }
+-    // Status owns SecretRef resolution diagnostics. Doctor must not treat an
+-    // unresolved ref object as an API key and report a false provider failure.
+-    if (hasConfiguredMemorySecretRef(params.config, agentId)) {
+-      continue;
+-    }
+-    const failure = await deps.inspectConfiguredProvider({
+-      config: params.config,
+-      agentId,
+-      env: params.env,
+-      agentDatabasePath,
+-    });
+-    if (failure) {
+-      findings.push({
+-        ...failure,
+-        agentId,
+-        model,
+-        configPrefix: resolveConfigPrefix(params.config, agentId),
+-      });
+-    }
+-  }
+-  return findings;
+-}
+-
+-function formatFinding(finding: VectorProviderFinding): string {
+-  return (
+-    `Memory index for agent ${finding.agentId} uses vector model ${finding.model}, but embedding provider ` +
+-    `"${finding.provider}" cannot initialize (${finding.reason}). Set ${finding.configPrefix}.remote.apiKey ` +
+-    `(for example, to a SecretRef) or choose a working ${finding.configPrefix}.provider. ` +
+-    "Memory sync will abort rather than overwrite this semantic index with FTS-only data."
+-  );
+-}
+-
+-export const vectorIndexProviderDiagnostic: PluginDoctorStateMigration = {
+-  id: "memory-core-vector-index-provider-diagnostic",
+-  label: "Memory Core vector index provider readiness",
+-  async detectLegacyState(params) {
+-    const findings = await collectVectorProviderFindings(params);
+-    return findings.length > 0
+-      ? { preview: findings.map((finding) => `- ${formatFinding(finding)}`) }
+-      : null;
+-  },
+-  async migrateLegacyState(params) {
+-    const findings = await collectVectorProviderFindings(params);
+-    return { changes: [], warnings: findings.map(formatFinding) };
+-  },
+-};
