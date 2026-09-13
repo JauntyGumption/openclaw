@@ -1,0 +1,313 @@
+From 94a7def4520748b3ea8df1099b73f2bdf566b6ff Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 13 Sep 2026 03:00:41 +0200
+Subject: [PATCH] fix(qmd): restore search orchestration
+
+---
+ .../src/memory-search-tool-query.ts           | 87 +++++++++++++++++--
+ extensions/memory-core/src/tools.test.ts      |  5 +-
+ extensions/memory-core/src/tools.ts           | 55 +++++++++++-
+ 3 files changed, 134 insertions(+), 13 deletions(-)
+
+diff --git a/extensions/memory-core/src/memory-search-tool-query.ts b/extensions/memory-core/src/memory-search-tool-query.ts
+index 217cc9b7191..0bb71ccfb16 100644
+--- a/extensions/memory-core/src/memory-search-tool-query.ts
++++ b/extensions/memory-core/src/memory-search-tool-query.ts
+@@ -8,6 +8,11 @@ import {
+ } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
+ import type { OpenClawConfig } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
+ import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry";
++import {
++  MEMORY_SEARCH_DEADLINE_CONTROL,
++  type MemorySearchDeadlineAction,
++  type MemorySearchDeadlineControlOptions,
++} from "./memory/search-deadline.js";
+ import { filterMemorySearchHitsBySessionVisibility } from "./session-search-visibility.js";
+ import { buildMemorySearchUnavailableResult } from "./tools.shared.js";
+ 
+@@ -24,7 +29,11 @@ export function buildPausedMemoryIndexUnavailableResult(reason: string) {
+   });
+ }
+ 
+-type ManagerState = { manager: MemorySearchManager; managerMs?: number };
++type ManagerState = {
++  manager: MemorySearchManager;
++  managerMs?: number;
++  managerCacheState?: string;
++};
+ 
+ type MemorySearchToolQuery = {
+   text: string;
+@@ -36,6 +45,7 @@ type MemorySearchToolQuery = {
+   requestedCorpus?: "memory" | "wiki" | "all" | "sessions";
+   sessionKey?: string;
+   activeProjectKeys?: readonly string[];
++  qmdSearchModeOverride?: "query" | "search" | "vsearch";
+   conversationRecall?: OpenClawPluginToolContext["conversationRecall"];
+ };
+ 
+@@ -55,12 +65,42 @@ function isClosedMemoryStoreError(error: unknown): boolean {
+   );
+ }
+ 
++function mergeQmdRuntimeDebug(
++  entries: readonly MemorySearchRuntimeDebug[],
++): MemorySearchRuntimeDebug["qmd"] | undefined {
++  const merged: NonNullable<MemorySearchRuntimeDebug["qmd"]> = {};
++  for (const entry of entries) {
++    const qmd = entry.qmd;
++    if (!qmd) {
++      continue;
++    }
++    if (!merged.collectionValidation && qmd.collectionValidation) {
++      merged.collectionValidation = qmd.collectionValidation;
++    }
++    if (qmd.multiCollectionProbe) {
++      merged.multiCollectionProbe = qmd.multiCollectionProbe;
++    }
++    if (qmd.searchPlan) {
++      merged.searchPlan = qmd.searchPlan;
++    }
++  }
++  return Object.keys(merged).length > 0 ? merged : undefined;
++}
++
++function mergeEmbeddingBootstrapRuntimeDebug(
++  entries: readonly MemorySearchRuntimeDebug[],
++): MemorySearchRuntimeDebug["embeddingBootstrap"] | undefined {
++  return entries.findLast((entry) => entry.embeddingBootstrap)?.embeddingBootstrap;
++}
++
+ export async function executeMemorySearchToolQuery(params: {
+   initialManager: ManagerState;
+   refreshManager: () => Promise<ManagerState | null>;
+   query: MemorySearchToolQuery;
+   visibility: MemorySearchToolVisibility;
+   signal: AbortSignal;
++  controlDeadline: (action: MemorySearchDeadlineAction) => void;
++  oneShotCliRun?: boolean;
+ }) {
+   const startedAt = Date.now();
+   const runtimeDebug: MemorySearchRuntimeDebug[] = [];
+@@ -98,10 +138,13 @@ export async function executeMemorySearchToolQuery(params: {
+       minScore: query.minScore,
+       sessionKey: query.sessionKey,
+       activeProjectKeys: query.activeProjectKeys ? [...query.activeProjectKeys] : undefined,
++      qmdSearchModeOverride: query.qmdSearchModeOverride,
+       signal,
+       onDebug: (debug) => runtimeDebug.push(debug),
++      [MEMORY_SEARCH_DEADLINE_CONTROL]: params.controlDeadline,
+       ...(searchSources ? { sources: searchSources } : {}),
+-    });
++    } as NonNullable<Parameters<MemorySearchManager["search"]>[1]> &
++      MemorySearchDeadlineControlOptions);
+     return { candidates, searchWindow };
+   };
+ 
+@@ -120,8 +163,8 @@ export async function executeMemorySearchToolQuery(params: {
+     searched = await searchOnce();
+   }
+ 
+-  const status = active.manager.status();
+-  const pausedIndexIdentityReason = resolveMemoryIndexIdentityReason(status);
++  let status = active.manager.status();
++  let pausedIndexIdentityReason = resolveMemoryIndexIdentityReason(status);
+   if (pausedIndexIdentityReason) {
+     return {
+       status,
+@@ -132,6 +175,31 @@ export async function executeMemorySearchToolQuery(params: {
+     };
+   }
+ 
++  // One-shot CLI managers have no background lifecycle. Preserve their QMD
++  // bootstrap retry, while long-lived managers keep update work off the tool
++  // hot path and builtin managers retain their current single-search behavior.
++  if (
++    searched.candidates.length === 0 &&
++    params.oneShotCliRun === true &&
++    status.backend === "qmd" &&
++    active.manager.sync &&
++    !runtimeDebug.some((entry) => entry.embeddingBootstrap)
++  ) {
++    await active.manager.sync({ reason: "search", force: true });
++    searched = await searchOnce();
++    status = active.manager.status();
++    pausedIndexIdentityReason = resolveMemoryIndexIdentityReason(status);
++    if (pausedIndexIdentityReason) {
++      return {
++        status,
++        rawResults: [],
++        pausedIndexIdentityReason,
++        searchMode: undefined,
++        debug: undefined,
++      };
++    }
++  }
++
+   let filtered = await filterMemorySearchHitsBySessionVisibility({
+     cfg: visibility.cfg,
+     agentId: visibility.agentId,
+@@ -153,6 +221,7 @@ export async function executeMemorySearchToolQuery(params: {
+   const postFilterHits = filtered.length;
+   const rawResults = filtered.slice(0, query.resultLimit);
+   const latestDebug = runtimeDebug.at(-1);
++  const embeddingBootstrap = mergeEmbeddingBootstrapRuntimeDebug(runtimeDebug);
+   return {
+     status,
+     rawResults,
+@@ -161,12 +230,16 @@ export async function executeMemorySearchToolQuery(params: {
+     debug: {
+       backend: status.backend,
+       configuredMode: latestDebug?.configuredMode,
+-      effectiveMode: "n/a",
++      effectiveMode:
++        status.backend === "qmd"
++          ? (latestDebug?.effectiveMode ?? latestDebug?.configuredMode)
++          : "n/a",
+       fallback: latestDebug?.fallback,
+       managerMs: active.managerMs,
++      managerCacheState: active.managerCacheState,
+       searchMs: Math.max(0, Date.now() - startedAt),
+-      embeddingBootstrap: runtimeDebug.findLast((entry) => entry.embeddingBootstrap)
+-        ?.embeddingBootstrap,
++      embeddingBootstrap,
++      qmd: mergeQmdRuntimeDebug(runtimeDebug),
+       hits: rawResults.length,
+       candidateHits: searched.candidates.length,
+       withheldHits: Math.max(0, searched.candidates.length - postFilterHits),
+diff --git a/extensions/memory-core/src/tools.test.ts b/extensions/memory-core/src/tools.test.ts
+index 4215774b493..4e475439bbf 100644
+--- a/extensions/memory-core/src/tools.test.ts
++++ b/extensions/memory-core/src/tools.test.ts
+@@ -69,8 +69,9 @@ function createQmdTimeoutSearchTool(options?: { oneShotCliRun?: boolean }) {
+ function expectMemorySearchTimeout(details: unknown, seconds: number): void {
+   expectUnavailableMemorySearchDetails(details, {
+     error: `memory_search timed out after ${seconds}s`,
+-    warning: "Memory search is unavailable due to an embedding/provider error.",
+-    action: "Check embedding provider configuration and retry memory_search.",
++    warning: "Memory search did not finish within its time limit.",
++    action:
++      "Retry memory_search after a short wait: a memory-corpus timeout pauses retries for up to a minute. If memory-corpus timeouts persist, run: openclaw memory status --deep --agent main, and rebuild with openclaw memory index --force --agent main only if it reports the index dirty or incomplete",
+   });
+ }
+ 
+diff --git a/extensions/memory-core/src/tools.ts b/extensions/memory-core/src/tools.ts
+index fb3ff52f55e..62809175958 100644
+--- a/extensions/memory-core/src/tools.ts
++++ b/extensions/memory-core/src/tools.ts
+@@ -12,6 +12,7 @@ import {
+   readStringParam,
+   resolveMemoryDreamingPluginConfig,
+   type MemoryCorpusSearchResult,
++  type OpenClawConfig,
+ } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
+ import {
+   resolveMemoryBackendConfig,
+@@ -44,6 +45,7 @@ import {
+   DEFAULT_MEMORY_SEARCH_TIMEOUT_MS,
+   resolveMemorySearchAbortError,
+   runMemorySearchWithDeadline,
++  type MemorySearchDeadlineAction,
+ } from "./memory/search-deadline.js";
+ import { recordShortTermRecalls } from "./short-term-promotion.js";
+ import {
+@@ -102,6 +104,36 @@ function readCorpusParam<T extends string>(
+   throw new Error(`corpus must be one of: ${allowed.join(", ")}`);
+ }
+ 
++function normalizeActiveMemoryQmdSearchMode(
++  value: unknown,
++): "inherit" | "search" | "vsearch" | "query" {
++  return value === "inherit" || value === "search" || value === "vsearch" || value === "query"
++    ? value
++    : "search";
++}
++
++function resolveActiveMemoryQmdSearchModeOverride(
++  cfg: OpenClawConfig,
++  sessionKey?: string,
++): "search" | "vsearch" | "query" | undefined {
++  if (typeof sessionKey !== "string" || !sessionKey.includes(":active-memory:")) {
++    return undefined;
++  }
++  const entry = cfg.plugins?.entries?.["active-memory"];
++  const entryRecord =
++    entry && typeof entry === "object" && !Array.isArray(entry)
++      ? (entry as { config?: unknown })
++      : undefined;
++  const pluginConfig =
++    entryRecord?.config &&
++    typeof entryRecord.config === "object" &&
++    !Array.isArray(entryRecord.config)
++      ? (entryRecord.config as { qmd?: { searchMode?: unknown } })
++      : undefined;
++  const searchMode = normalizeActiveMemoryQmdSearchMode(pluginConfig?.qmd?.searchMode);
++  return searchMode === "inherit" ? undefined : searchMode;
++}
++
+ function resolveMemorySearchToolCooldownKey(options: {
+   agentId?: string;
+   agentSessionKey?: string;
+@@ -334,6 +366,7 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
+         };
+         const searchMemory = async (
+           signal: AbortSignal,
++          controlDeadline: (action: MemorySearchDeadlineAction) => void,
+         ): Promise<MemoryCorpusAttempt<PrimaryMemorySearchValue | null>> => {
+           if (cooldown) {
+             return { corpus: "memory", outcome: "unavailable", value: null, ...cooldown };
+@@ -365,7 +398,11 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
+                     ? ["memory"]
+                     : undefined;
+               return await executeMemorySearchToolQuery({
+-                initialManager: { manager: memory.manager, managerMs: memory.debug?.managerMs },
++                initialManager: {
++                  manager: memory.manager,
++                  managerMs: memory.debug?.managerMs,
++                  managerCacheState: memory.debug?.managerCacheState,
++                },
+                 refreshManager: async () => {
+                   const refreshed = trackMemoryManager(
+                     await getMemoryManagerContextWithPurpose({
+@@ -378,7 +415,11 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
+                   );
+                   return "error" in refreshed
+                     ? null
+-                    : { manager: refreshed.manager, managerMs: refreshed.debug?.managerMs };
++                    : {
++                        manager: refreshed.manager,
++                        managerMs: refreshed.debug?.managerMs,
++                        managerCacheState: refreshed.debug?.managerCacheState,
++                      };
+                 },
+                 query: {
+                   text: query,
+@@ -390,10 +431,16 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
+                   requestedCorpus,
+                   sessionKey: options.agentSessionKey,
+                   activeProjectKeys: options.activeProjectKeys,
++                  qmdSearchModeOverride: resolveActiveMemoryQmdSearchModeOverride(
++                    cfg,
++                    options.agentSessionKey,
++                  ),
+                   conversationRecall: options.conversationRecall,
+                 },
+                 visibility: { cfg, agentId, sandboxed: options.sandboxed === true },
+                 signal,
++                controlDeadline,
++                oneShotCliRun: options.oneShotCliRun,
+               });
+             },
+           });
+@@ -482,9 +529,9 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
+           return await runMemoryCorpusDeadline({
+             operation: "memory_search",
+             parentSignal: callerSignal,
+-            run: async (signal) => {
++            run: async (signal, controlDeadline) => {
+               const [memory, wiki] = await Promise.all([
+-                searchesMemory ? searchMemory(signal) : Promise.resolve(null),
++                searchesMemory ? searchMemory(signal, controlDeadline) : Promise.resolve(null),
+                 searchesWiki
+                   ? searchMemoryCorpusSupplements({
+                       query,
