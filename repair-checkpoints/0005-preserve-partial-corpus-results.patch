@@ -1,0 +1,158 @@
+From b9d0d48b34b2fd44e9a956e3052fcfcf704a2396 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 13 Sep 2026 03:16:51 +0200
+Subject: [PATCH] fix(memory): preserve partial corpus results at deadline
+
+---
+ extensions/memory-core/src/cli.test.ts        |  2 +-
+ extensions/memory-core/src/memory-corpus.ts   |  1 +
+ .../src/memory/qmd-manager.test.ts            |  7 ++++++-
+ .../src/memory/search-deadline.test.ts        | 17 +++++++++++++++++
+ .../memory-core/src/memory/search-deadline.ts | 11 ++++++++---
+ extensions/memory-core/src/tools.test.ts      | 19 ++++++++++++++++++-
+ 6 files changed, 51 insertions(+), 6 deletions(-)
+
+diff --git a/extensions/memory-core/src/cli.test.ts b/extensions/memory-core/src/cli.test.ts
+index 688865fb957..f0e3e2cf5b5 100644
+--- a/extensions/memory-core/src/cli.test.ts
++++ b/extensions/memory-core/src/cli.test.ts
+@@ -1872,7 +1872,7 @@ describe("memory cli", () => {
+ 
+       expectCliSync(sync);
+       expectLogged(log, "QMD index: ");
+-      expect(log).toHaveBeenCalledWith("Memory index updated (main).");
++      expect(log).toHaveBeenCalledWith("Memory index updated (main): 0 files indexed.");
+       expect(close).toHaveBeenCalled();
+     });
+   });
+diff --git a/extensions/memory-core/src/memory-corpus.ts b/extensions/memory-core/src/memory-corpus.ts
+index cc77305e875..2f5b6a77fb6 100644
+--- a/extensions/memory-core/src/memory-corpus.ts
++++ b/extensions/memory-core/src/memory-corpus.ts
+@@ -103,6 +103,7 @@ export async function runMemoryCorpusDeadline<T>(params: {
+   return await runMemorySearchWithDeadline({
+     timeoutMs: DEFAULT_MEMORY_SEARCH_TIMEOUT_MS,
+     operation: params.operation,
++    settleAfterDeadlineAbort: true,
+     parentSignal: params.parentSignal,
+     run: params.run,
+   });
+diff --git a/extensions/memory-core/src/memory/qmd-manager.test.ts b/extensions/memory-core/src/memory/qmd-manager.test.ts
+index 11874765631..07aabf0b990 100644
+--- a/extensions/memory-core/src/memory/qmd-manager.test.ts
++++ b/extensions/memory-core/src/memory/qmd-manager.test.ts
+@@ -5246,6 +5246,7 @@ describe("QmdMemoryManager", () => {
+     const { manager } = await createManager();
+ 
+     await expect(manager.readFile({ relPath: "qmd/sessions-main/export.md" })).resolves.toEqual({
++      status: "not_found",
+       path: "qmd/sessions-main/export.md",
+       text: "",
+     });
+@@ -5389,7 +5390,11 @@ describe("QmdMemoryManager", () => {
+       const restoreOpen = "installOpenSpy" in testCase ? testCase.installOpenSpy() : undefined;
+       try {
+         const result = await manager.readFile(testCase.request);
+-        expect(result, testCase.name).toEqual({ text: "", path: testCase.expectedPath });
++        expect(result, testCase.name).toEqual({
++          status: "not_found",
++          text: "",
++          path: testCase.expectedPath,
++        });
+       } finally {
+         restoreOpen?.();
+         await manager.close();
+diff --git a/extensions/memory-core/src/memory/search-deadline.test.ts b/extensions/memory-core/src/memory/search-deadline.test.ts
+index 04b00e29753..1b5c755d8b8 100644
+--- a/extensions/memory-core/src/memory/search-deadline.test.ts
++++ b/extensions/memory-core/src/memory/search-deadline.test.ts
+@@ -60,6 +60,23 @@ describe("runMemorySearchWithDeadline", () => {
+     expect(vi.getTimerCount()).toBe(0);
+   });
+ 
++  it("can let an aborted corpus task settle into a partial result", async () => {
++    vi.useFakeTimers();
++    const result = runMemorySearchWithDeadline({
++      timeoutMs: 15_000,
++      operation: "memory_get",
++      settleAfterDeadlineAbort: true,
++      run: async (signal) =>
++        await new Promise<string>((resolve) => {
++          signal.addEventListener("abort", () => resolve("partial"), { once: true });
++        }),
++    });
++    await vi.advanceTimersByTimeAsync(15_000);
++
++    await expect(result).resolves.toBe("partial");
++    expect(vi.getTimerCount()).toBe(0);
++  });
++
+   it("marks its own deadline error and nothing that merely reads like one", async () => {
+     vi.useFakeTimers();
+     const result = runMemorySearchWithDeadline({
+diff --git a/extensions/memory-core/src/memory/search-deadline.ts b/extensions/memory-core/src/memory/search-deadline.ts
+index f227a19fb81..3895cde033e 100644
+--- a/extensions/memory-core/src/memory/search-deadline.ts
++++ b/extensions/memory-core/src/memory/search-deadline.ts
+@@ -45,6 +45,7 @@ export function isMemorySearchDeadlineError(error: unknown): boolean {
+ export async function runMemorySearchWithDeadline<T>(params: {
+   timeoutMs: number;
+   operation?: "memory_search" | "memory_get";
++  settleAfterDeadlineAbort?: boolean;
+   parentSignal?: AbortSignal;
+   run: (
+     signal: AbortSignal,
+@@ -70,9 +71,12 @@ export async function runMemorySearchWithDeadline<T>(params: {
+   });
+   const reachDefaultDeadline = () => {
+     acceptDeadlineUpdates = false;
+-    // Resolve before aborting so abort-aware tasks cannot replace the stable
+-    // deadline error with a provider-wrapped cancellation error.
+-    resolveTimeout(timeoutOutcome);
++    // Strict callers receive the stable deadline before an abort-aware task can
++    // replace it with a provider-wrapped cancellation error. Corpus callers
++    // instead settle their aborted child attempts into partial-result metadata.
++    if (!params.settleAfterDeadlineAbort) {
++      resolveTimeout(timeoutOutcome);
++    }
+     controller.abort(timeoutError);
+   };
+   const scheduleDefaultDeadline = () => {
+@@ -132,6 +136,7 @@ export async function runMemorySearchWithDeadline<T>(params: {
+       throw resolveMemorySearchAbortError(parentSignal);
+     }
+     if (
++      !params.settleAfterDeadlineAbort &&
+       acceptDeadlineUpdates &&
+       timer !== undefined &&
+       Date.now() - deadlineStartedAt >= remainingMs
+diff --git a/extensions/memory-core/src/tools.test.ts b/extensions/memory-core/src/tools.test.ts
+index 4e475439bbf..851fbec73fe 100644
+--- a/extensions/memory-core/src/tools.test.ts
++++ b/extensions/memory-core/src/tools.test.ts
+@@ -718,7 +718,24 @@ describe("memory_search unavailable payloads", () => {
+ 
+       expect(settled).toBe(true);
+       const result = await resultPromise;
+-      expectMemorySearchTimeout(result.details, 15);
++      expect(result.details).toEqual({
++        results: [],
++        provider: undefined,
++        model: undefined,
++        fallback: undefined,
++        citations: "auto",
++        mode: undefined,
++        corpora: [
++          {
++            corpus: "wiki",
++            outcome: "unavailable",
++            error: "memory_search timed out after 15s",
++          },
++        ],
++        warning: "Wiki corpus unavailable: memory_search timed out after 15s",
++        error: "memory_search timed out after 15s",
++        debug: undefined,
++      });
+       expect(getMemorySearchManagerMockCalls()).toBe(0);
+     } finally {
+       vi.useRealTimers();
