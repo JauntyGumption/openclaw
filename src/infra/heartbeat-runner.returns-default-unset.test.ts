@@ -1880,7 +1880,7 @@ describe("runHeartbeatOnce", () => {
     return { res, replySpy, sendWhatsApp, workspaceDir };
   }
 
-  it("injects actionable monitor scratch without workspace file guidance", async () => {
+  it("injects actionable monitor scratch alongside workspace heartbeat guidance", async () => {
     const { res, replySpy, sendWhatsApp } = await runHeartbeatScratchScenario({
       fileState: "actionable",
       reason: "interval",
@@ -1893,7 +1893,7 @@ describe("runHeartbeatOnce", () => {
       const calledCtx = replyBody(replySpy);
       expect(calledCtx.Body).toContain("Heartbeat monitor scratch:");
       expect(calledCtx.Body).toContain("Check server logs");
-      expect(calledCtx.Body).not.toContain("HEARTBEAT.md");
+      expect(calledCtx.Body).toContain("HEARTBEAT.md");
     } finally {
       replySpy.mockRestore();
     }

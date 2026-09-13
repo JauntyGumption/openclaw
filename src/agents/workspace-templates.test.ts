@@ -67,9 +67,11 @@ describe("resolveWorkspaceTemplateSearchDirs", () => {
     }
   });
 
-  it("does not ship a retired runtime heartbeat template", async () => {
-    const heartbeatTemplate = path.resolve("src", "agents", "templates", "HEARTBEAT.md");
+  it("ships HEARTBEAT.md from the canonical documentation templates", async () => {
+    const [templatesDir = ""] = await (
+      await loadWorkspaceTemplateResolvers()
+    ).resolveWorkspaceTemplateSearchDirs();
 
-    await expect(fs.access(heartbeatTemplate)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.access(path.join(templatesDir, "HEARTBEAT.md"))).resolves.toBeUndefined();
   });
 });

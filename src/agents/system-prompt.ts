@@ -92,8 +92,9 @@ const CONTEXT_FILE_ORDER = new Map<string, number>([
   ["memory.md", 70],
 ]);
 
+const DYNAMIC_CONTEXT_FILE_BASENAMES = new Set(["heartbeat.md"]);
 const DEFAULT_HEARTBEAT_PROMPT_CONTEXT_BLOCK =
-  /Default heartbeat prompt:\r?\n`(?:Read HEARTBEAT\.md if it exists|Follow the heartbeat monitor scratch context when provided\.)[^`\r\n]*HEARTBEAT_OK\.`/gu;
+  /Default heartbeat prompt:\r?\n`(?:Read HEARTBEAT\.md if it exists|Follow the heartbeat monitor scratch context when provided\.|Follow HEARTBEAT\.md standing guidance and heartbeat monitor scratch when provided\.)[^`\r\n]*HEARTBEAT_OK\.`/gu;
 const SYSTEM_PROMPT_STABLE_PREFIX_CACHE_LIMIT = 64;
 
 type StablePromptPrefixCacheEntry = {
@@ -173,6 +174,10 @@ function getContextFileBasename(pathValue: string): string {
   return normalizeLowercaseStringOrEmpty(normalizedPath.split("/").pop() ?? normalizedPath);
 }
 
+function isDynamicContextFile(pathValue: string): boolean {
+  return DYNAMIC_CONTEXT_FILE_BASENAMES.has(getContextFileBasename(pathValue));
+}
+
 function isBootstrapContextFile(pathValue: string): boolean {
   return /(^|[\\/])BOOTSTRAP\.md$/iu.test(pathValue.trim());
 }
@@ -206,30 +211,55 @@ function sortContextFilesForPrompt(contextFiles: EmbeddedContextFile[]): Embedde
     .map(({ file }) => file);
 }
 
-function buildProjectContextSection(files: EmbeddedContextFile[]) {
-  if (files.length === 0) {
+function partitionContextFilesForPrompt(contextFiles: EmbeddedContextFile[] = []) {
+  const ordered = sortContextFilesForPrompt(
+    contextFiles.filter((file) => typeof file.path === "string" && file.path.trim().length > 0),
+  );
+  return {
+    ordered,
+    stable: ordered.filter((file) => !isDynamicContextFile(file.path)),
+    dynamic: ordered.filter((file) => isDynamicContextFile(file.path)),
+  };
+}
+
+function buildProjectContextSection(params: {
+  files: EmbeddedContextFile[];
+  heading: string;
+  dynamic?: boolean;
+}) {
+  if (params.files.length === 0) {
     return [];
   }
-  const lines = ["# Project Context", ""];
-  const hasSoulFile = files.some((file) => getContextFileBasename(file.path) === "soul.md");
-  const hasMemoryFile = files.some((file) => getContextFileBasename(file.path) === "memory.md");
-  const hasUserFile = files.some((file) => getContextFileBasename(file.path) === "user.md");
-  lines.push("Loaded project context:");
-  if (hasSoulFile) {
-    lines.push("SOUL.md: persona/tone. Follow it unless higher-priority instructions override.");
-  }
-  if (hasMemoryFile) {
-    lines.push(
-      "MEMORY.md: durable non-profile facts and decisions; use when relevant unless higher-priority instructions override.",
+  const lines = [params.heading, ""];
+  if (params.dynamic) {
+    lines.push("Frequently changing workspace guidance:", "");
+  } else {
+    const hasSoulFile = params.files.some(
+      (file) => getContextFileBasename(file.path) === "soul.md",
     );
-  }
-  if (hasUserFile) {
-    lines.push(
-      "USER.md: durable user preferences and profile directives; follow unless higher-priority instructions override.",
+    const hasMemoryFile = params.files.some(
+      (file) => getContextFileBasename(file.path) === "memory.md",
     );
+    const hasUserFile = params.files.some(
+      (file) => getContextFileBasename(file.path) === "user.md",
+    );
+    lines.push("Loaded project context:");
+    if (hasSoulFile) {
+      lines.push("SOUL.md: persona/tone. Follow it unless higher-priority instructions override.");
+    }
+    if (hasMemoryFile) {
+      lines.push(
+        "MEMORY.md: durable non-profile facts and decisions; use when relevant unless higher-priority instructions override.",
+      );
+    }
+    if (hasUserFile) {
+      lines.push(
+        "USER.md: durable user preferences and profile directives; follow unless higher-priority instructions override.",
+      );
+    }
+    lines.push("");
   }
-  lines.push("");
-  for (const file of files) {
+  for (const file of params.files) {
     lines.push(`## ${file.path}`, "", sanitizeContextFileContentForPrompt(file.content), "");
   }
   return lines;
@@ -1151,16 +1181,16 @@ export function buildAgentSystemPrompt(params: {
   });
   const workspaceNotes = normalizeStringEntries(params.workspaceNotes);
 
-  const contextFiles = sortContextFilesForPrompt(
+  const contextFiles = partitionContextFilesForPrompt(
     filterProjectScopedCuratedContextFiles({
       contextFiles: params.contextFiles,
       activeProjectKeys: params.activeProjectKeys,
-    }).filter((file) => typeof file.path === "string" && file.path.trim().length > 0),
+    }),
   );
   const bootstrapSystemPromptSections = buildAgentBootstrapSystemPromptSections({
     bootstrapMode: params.bootstrapMode,
     bootstrapTruncationNotice: params.bootstrapTruncationNotice,
-    contextFiles,
+    contextFiles: contextFiles.ordered,
   });
   const stablePrefixCacheKey = hashStablePromptInput({
     workspaceDir: params.workspaceDir,
@@ -1202,7 +1232,7 @@ export function buildAgentSystemPrompt(params: {
     memoryCitationsMode: params.memoryCitationsMode,
     memorySection,
     acpEnabled,
-    stableContextFiles: contextFiles,
+    stableContextFiles: contextFiles.stable,
   });
   const stablePrefix = cacheStablePromptPrefix(stablePrefixCacheKey, () => {
     const lines = [
@@ -1426,7 +1456,12 @@ export function buildAgentSystemPrompt(params: {
       lines.push("## Reasoning Format", reasoningHint, "");
     }
 
-    lines.push(...buildProjectContextSection(contextFiles));
+    lines.push(
+      ...buildProjectContextSection({
+        files: contextFiles.stable,
+        heading: "# Project Context",
+      }),
+    );
 
     if (!isMinimal && silentReplyPromptMode !== "none") {
       lines.push(
@@ -1442,6 +1477,14 @@ export function buildAgentSystemPrompt(params: {
   });
 
   const lines = [stablePrefix];
+
+  lines.push(
+    ...buildProjectContextSection({
+      files: contextFiles.dynamic,
+      heading: contextFiles.stable.length > 0 ? "# Dynamic Project Context" : "# Project Context",
+      dynamic: true,
+    }),
+  );
 
   // Local date and timezone can change between turns. Keep them at the front of
   // the volatile suffix so rollover is visible without invalidating the stable prefix.

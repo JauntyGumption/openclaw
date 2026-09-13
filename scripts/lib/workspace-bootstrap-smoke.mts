@@ -12,6 +12,7 @@ export const WORKSPACE_TEMPLATE_PACK_PATHS: readonly string[] = [
   "docs/reference/templates/SOUL.md",
   "docs/reference/templates/IDENTITY.md",
   "docs/reference/templates/USER.md",
+  "docs/reference/templates/HEARTBEAT.md",
   "docs/reference/templates/BOOTSTRAP.md",
 ];
 
@@ -20,6 +21,7 @@ const REQUIRED_BOOTSTRAP_WORKSPACE_FILES = [
   "SOUL.md",
   "IDENTITY.md",
   "USER.md",
+  "HEARTBEAT.md",
   "BOOTSTRAP.md",
 ];
 

@@ -27,6 +27,7 @@ import {
 import {
   DEFAULT_AGENTS_FILENAME,
   DEFAULT_BOOTSTRAP_FILENAME,
+  DEFAULT_HEARTBEAT_FILENAME,
   DEFAULT_IDENTITY_FILENAME,
   DEFAULT_MEMORY_FILENAME,
   DEFAULT_SOUL_FILENAME,
@@ -41,7 +42,6 @@ import {
   type WorkspaceBootstrapFile,
 } from "./workspace.js";
 
-const LEGACY_HEARTBEAT_FILENAME = "HEARTBEAT.md";
 let testState: OpenClawTestState | undefined;
 
 beforeEach(async () => {
@@ -659,7 +659,7 @@ describe("ensureAgentWorkspace", () => {
         DEFAULT_SOUL_FILENAME,
         DEFAULT_IDENTITY_FILENAME,
         DEFAULT_USER_FILENAME,
-        LEGACY_HEARTBEAT_FILENAME,
+        DEFAULT_HEARTBEAT_FILENAME,
       ],
     });
 
@@ -671,7 +671,7 @@ describe("ensureAgentWorkspace", () => {
       DEFAULT_SOUL_FILENAME,
       DEFAULT_IDENTITY_FILENAME,
       DEFAULT_USER_FILENAME,
-      LEGACY_HEARTBEAT_FILENAME,
+      DEFAULT_HEARTBEAT_FILENAME,
     ]) {
       await expectPathMissing(path.join(tempDir, fileName));
     }
@@ -859,13 +859,14 @@ describe("ensureAgentWorkspace", () => {
     await expect(isWorkspaceBootstrapPending(tempDir)).resolves.toBe(false);
   });
 
-  it("no longer seeds HEARTBEAT.md into new workspaces", async () => {
+  it("seeds an effectively empty HEARTBEAT.md into new workspaces", async () => {
     const tempDir = await makeTempWorkspace("openclaw-workspace-");
 
     await ensureAgentWorkspace({ dir: tempDir, ensureBootstrapFiles: true });
 
-    // Heartbeat monitor context lives in cron scratch now; new workspaces get no file.
-    await expectPathMissing(path.join(tempDir, LEGACY_HEARTBEAT_FILENAME));
+    await expect(
+      fs.readFile(path.join(tempDir, DEFAULT_HEARTBEAT_FILENAME), "utf8"),
+    ).resolves.toContain("# HEARTBEAT.md - Standing Orientation");
   });
 
   it("does not recreate optional bootstrap files when workspace setup is already completed", async () => {
@@ -897,6 +898,7 @@ describe("ensureAgentWorkspace", () => {
     await fs.unlink(path.join(tempDir, DEFAULT_SOUL_FILENAME));
     await fs.unlink(path.join(tempDir, DEFAULT_IDENTITY_FILENAME));
     await fs.unlink(path.join(tempDir, DEFAULT_USER_FILENAME));
+    await fs.unlink(path.join(tempDir, DEFAULT_HEARTBEAT_FILENAME));
     await writeWorkspaceFile({
       dir: tempDir,
       name: DEFAULT_AGENTS_FILENAME,
@@ -910,7 +912,7 @@ describe("ensureAgentWorkspace", () => {
     await expectPathMissing(path.join(tempDir, DEFAULT_SOUL_FILENAME));
     await expectPathMissing(path.join(tempDir, DEFAULT_IDENTITY_FILENAME));
     await expectPathMissing(path.join(tempDir, DEFAULT_USER_FILENAME));
-    await expectPathMissing(path.join(tempDir, LEGACY_HEARTBEAT_FILENAME));
+    await expectPathMissing(path.join(tempDir, DEFAULT_HEARTBEAT_FILENAME));
 
     // Verify the required AGENTS.md file still exists.
     await expect(fs.access(path.join(tempDir, DEFAULT_AGENTS_FILENAME))).resolves.toBeUndefined();
@@ -946,7 +948,7 @@ describe("ensureAgentWorkspace", () => {
       DEFAULT_SOUL_FILENAME,
       DEFAULT_IDENTITY_FILENAME,
       DEFAULT_USER_FILENAME,
-      LEGACY_HEARTBEAT_FILENAME,
+      DEFAULT_HEARTBEAT_FILENAME,
     ]) {
       await expectPathMissing(path.join(tempDir, filename));
     }

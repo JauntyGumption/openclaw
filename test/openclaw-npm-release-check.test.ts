@@ -72,9 +72,9 @@ describe("prepared OpenClaw AI dependency", () => {
 });
 
 describe("workspace template package paths", () => {
-  it("does not require the retired heartbeat file in the npm pack guard", () => {
+  it("requires the heartbeat template in the npm pack guard", () => {
     expect(WORKSPACE_TEMPLATE_PACK_PATHS).not.toContain("src/agents/templates/HEARTBEAT.md");
-    expect(WORKSPACE_TEMPLATE_PACK_PATHS).not.toContain("docs/reference/templates/HEARTBEAT.md");
+    expect(WORKSPACE_TEMPLATE_PACK_PATHS).toContain("docs/reference/templates/HEARTBEAT.md");
   });
 
   it("does not package retired runtime heartbeat templates", () => {

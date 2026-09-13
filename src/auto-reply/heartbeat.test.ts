@@ -305,6 +305,7 @@ describe("resolveHeartbeatPromptForResponseTool", () => {
     const prompt = resolveHeartbeatPromptForResponseTool();
 
     expect(prompt).toBe(HEARTBEAT_RESPONSE_TOOL_PROMPT);
+    expect(prompt).toContain("HEARTBEAT.md");
     expect(prompt).toContain("heartbeat_respond");
     expect(prompt).toContain("notify=false");
     expect(prompt).not.toContain(HEARTBEAT_TOKEN);

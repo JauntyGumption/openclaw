@@ -24,6 +24,7 @@ import {
 import type { AgentRunSessionTarget } from "./run-session-target.js";
 import {
   DEFAULT_BOOTSTRAP_FILENAME,
+  DEFAULT_HEARTBEAT_FILENAME,
   DEFAULT_MEMORY_FILENAME,
   DEFAULT_USER_FILENAME,
   filterBootstrapFilesForSession,
@@ -160,8 +161,10 @@ function applyContextModeFilter(params: {
   if (contextMode !== "lightweight") {
     return params.files;
   }
-  // Heartbeat scratch is injected by the heartbeat runner, not bootstrap files.
-  // Cron/default lightweight mode also keeps bootstrap context empty on purpose.
+  if (params.runKind === "heartbeat") {
+    return params.files.filter((file) => file.name === DEFAULT_HEARTBEAT_FILENAME);
+  }
+  // Cron/default lightweight mode keeps bootstrap context empty on purpose.
   return [];
 }
 

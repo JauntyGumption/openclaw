@@ -60,6 +60,7 @@ export const DEFAULT_SOUL_FILENAME = "SOUL.md";
 export const DEFAULT_TOOLS_FILENAME = "TOOLS.md";
 export const DEFAULT_IDENTITY_FILENAME = "IDENTITY.md";
 export const DEFAULT_USER_FILENAME = "USER.md";
+export const DEFAULT_HEARTBEAT_FILENAME = "HEARTBEAT.md";
 export const DEFAULT_BOOTSTRAP_FILENAME = "BOOTSTRAP.md";
 export const DEFAULT_MEMORY_FILENAME = CANONICAL_ROOT_MEMORY_FILENAME;
 export const GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES = [
@@ -67,6 +68,7 @@ export const GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES = [
   DEFAULT_SOUL_FILENAME,
   DEFAULT_IDENTITY_FILENAME,
   DEFAULT_USER_FILENAME,
+  DEFAULT_HEARTBEAT_FILENAME,
 ] as const;
 const GENERATED_WORKSPACE_BOOTSTRAP_FILENAME_SET: ReadonlySet<string> = new Set(
   GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES,
@@ -248,6 +250,7 @@ export const WORKSPACE_BOOTSTRAP_FILENAMES = [
   DEFAULT_SOUL_FILENAME,
   DEFAULT_IDENTITY_FILENAME,
   DEFAULT_USER_FILENAME,
+  DEFAULT_HEARTBEAT_FILENAME,
   DEFAULT_BOOTSTRAP_FILENAME,
   DEFAULT_MEMORY_FILENAME,
 ] as const;
@@ -286,6 +289,7 @@ const OPTIONAL_BOOTSTRAP_FILENAMES: ReadonlySet<string> = new Set([
   DEFAULT_SOUL_FILENAME,
   DEFAULT_IDENTITY_FILENAME,
   DEFAULT_USER_FILENAME,
+  DEFAULT_HEARTBEAT_FILENAME,
 ]);
 
 /**
@@ -906,7 +910,7 @@ export async function ensureAgentWorkspace(params?: {
   ensureBootstrapFiles?: boolean;
   /**
    * List of optional bootstrap filenames to skip writing.
-   * Applies only to SOUL.md, USER.md, IDENTITY.md.
+   * Applies only to SOUL.md, USER.md, IDENTITY.md, HEARTBEAT.md.
    * Required workspace setup such as AGENTS.md still runs.
    */
   skipOptionalBootstrapFiles?: string[];
@@ -985,6 +989,7 @@ export async function ensureAgentWorkspace(params?: {
   const soulPath = path.join(dir, DEFAULT_SOUL_FILENAME);
   const identityPath = path.join(dir, DEFAULT_IDENTITY_FILENAME);
   const userPath = path.join(dir, DEFAULT_USER_FILENAME);
+  const heartbeatPath = path.join(dir, DEFAULT_HEARTBEAT_FILENAME);
 
   const isBrandNewWorkspace = await (async () => {
     const templatePaths = [agentsPath, soulPath, identityPath, userPath];
@@ -1053,14 +1058,14 @@ export async function ensureAgentWorkspace(params?: {
   const soulTemplate = await loadTemplate(DEFAULT_SOUL_FILENAME);
   const identityTemplate = await loadTemplate(DEFAULT_IDENTITY_FILENAME);
   const userTemplate = await loadTemplate(DEFAULT_USER_FILENAME);
+  const heartbeatTemplate = await loadTemplate(DEFAULT_HEARTBEAT_FILENAME);
   // Template and filesystem checks above are async. Another process may have
   // completed setup while they ran, so optional-file policy needs fresh state.
   initialState = readCanonicalWorkspaceStateSnapshot(dir);
   const skipOptionalBootstrapFiles = new Set(params?.skipOptionalBootstrapFiles ?? []);
   // When the workspace is already configured, skip optional bootstrap files to
-  // prevent subagent spawns from recreating root-level SOUL.md, USER.md, or
-  // IDENTITY.md that were removed intentionally or only exist under agent-specific
-  // subdirectories.
+  // prevent subagent spawns from recreating optional root-level files that were
+  // removed intentionally or only exist under agent-specific subdirectories.
   if (initialState.setup.setupCompletedAt) {
     for (const filename of OPTIONAL_BOOTSTRAP_FILENAMES) {
       skipOptionalBootstrapFiles.add(filename);
@@ -1078,6 +1083,9 @@ export async function ensureAgentWorkspace(params?: {
     : false;
   if (shouldWriteBootstrapFile(DEFAULT_USER_FILENAME)) {
     await writeFileIfMissing(userPath, userTemplate);
+  }
+  if (shouldWriteBootstrapFile(DEFAULT_HEARTBEAT_FILENAME)) {
+    await writeFileIfMissing(heartbeatPath, heartbeatTemplate);
   }
 
   let state = readCanonicalWorkspaceStateSnapshot(dir).setup;
@@ -1179,6 +1187,10 @@ export async function loadWorkspaceBootstrapFiles(dir: string): Promise<Workspac
     {
       name: DEFAULT_USER_FILENAME,
       filePath: path.join(resolvedDir, DEFAULT_USER_FILENAME),
+    },
+    {
+      name: DEFAULT_HEARTBEAT_FILENAME,
+      filePath: path.join(resolvedDir, DEFAULT_HEARTBEAT_FILENAME),
     },
     {
       name: DEFAULT_BOOTSTRAP_FILENAME,

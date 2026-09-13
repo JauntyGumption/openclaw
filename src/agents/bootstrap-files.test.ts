@@ -319,6 +319,7 @@ describe("resolveBootstrapFilesForRun", () => {
       "AGENTS.md",
       "SOUL.md",
       "IDENTITY.md",
+      "HEARTBEAT.md",
       "BOOTSTRAP.md",
     ]);
     expect(warnings).toHaveLength(3);
@@ -679,8 +680,9 @@ describe("resolveBootstrapContextForRun", () => {
     expect(contextFileNames.has("AGENTS.md")).toBe(true);
   });
 
-  it("keeps bootstrap context empty in lightweight heartbeat mode", async () => {
+  it("keeps authored heartbeat guidance in lightweight heartbeat mode", async () => {
     const workspaceDir = await makeTempWorkspace("openclaw-bootstrap-");
+    await fs.writeFile(path.join(workspaceDir, "HEARTBEAT.md"), "check inbox", "utf8");
     await fs.writeFile(path.join(workspaceDir, "SOUL.md"), "persona", "utf8");
 
     const files = await resolveBootstrapFilesForRun({
@@ -689,8 +691,7 @@ describe("resolveBootstrapContextForRun", () => {
       runKind: "heartbeat",
     });
 
-    // Heartbeat context comes from cron scratch via the heartbeat runner now.
-    expect(files).toStrictEqual([]);
+    expect(files.map((file) => file.name)).toStrictEqual(["HEARTBEAT.md"]);
   });
 
   it("keeps bootstrap context empty in lightweight cron mode", async () => {
@@ -706,10 +707,19 @@ describe("resolveBootstrapContextForRun", () => {
     expect(files).toStrictEqual([]);
   });
 
-  it("never re-imports a leftover workspace HEARTBEAT.md into bootstrap context", async () => {
+  it("loads authored HEARTBEAT.md into ordinary and heartbeat context", async () => {
     const workspaceDir = await createHeartbeatAgentsWorkspace();
 
-    const files = await resolveBootstrapFilesForRun({
+    const ordinaryFiles = await resolveBootstrapFilesForRun({
+      workspaceDir,
+      config: {
+        agents: {
+          defaults: { heartbeat: {} },
+          list: [{ id: "main" }],
+        },
+      },
+    });
+    const heartbeatFiles = await resolveBootstrapFilesForRun({
       workspaceDir,
       runKind: "heartbeat",
       config: {
@@ -720,7 +730,8 @@ describe("resolveBootstrapContextForRun", () => {
       },
     });
 
-    expectHeartbeatExcludedAndAgentsKept(files);
+    expect(ordinaryFiles.map((file) => file.name)).toContain("HEARTBEAT.md");
+    expect(heartbeatFiles.map((file) => file.name)).toContain("HEARTBEAT.md");
   });
 });
 
