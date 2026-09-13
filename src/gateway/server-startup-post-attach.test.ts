@@ -1562,6 +1562,8 @@ describe("startGatewayPostAttachRuntime", () => {
     expect(onPluginServices).not.toHaveBeenCalled();
     expect(unlockStartupMethods).toHaveBeenCalledOnce();
     expect(onSidecarsReady).toHaveBeenCalledOnce();
+  });
+
   it("keeps the qmd memory backend lazy by default", async () => {
     const log = { info: vi.fn(), warn: vi.fn() };
     await startGatewayPostAttachRuntime({

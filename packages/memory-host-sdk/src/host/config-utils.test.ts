@@ -4,6 +4,7 @@ import {
   normalizeConfiguredMemoryExtraPaths,
   resolveMemoryHostAgentWorkspaceDir,
   resolveRememberAcrossConversations,
+  splitShellArgs,
 } from "./config-utils.js";
 
 describe("resolveMemoryHostAgentWorkspaceDir", () => {
@@ -44,7 +45,8 @@ describe("resolveMemoryHostAgentWorkspaceDir", () => {
         { HOME: "/home/peter$&mall", OPENCLAW_HOME: "~/oc" },
       ),
     ).toBe(path.resolve("/home/peter$&mall/oc/ws"));
-import { resolveRememberAcrossConversations, splitShellArgs } from "./config-utils.js";
+  });
+});
 
 describe("splitShellArgs", () => {
   it("preserves quoted command arguments through the focused re-export", () => {

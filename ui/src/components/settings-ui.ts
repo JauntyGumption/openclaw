@@ -290,6 +290,37 @@ export function renderSettingsDefaultDescription(value: string, overridden: bool
   return html`${t(overridden ? "configForm.defaultValue" : "configForm.usingDefault", { value })}`;
 }
 
+export function renderSettingsDefaultState(props: {
+  value: string;
+  overridden: boolean;
+  disabled?: boolean;
+  onReset: () => void;
+}): {
+  description: TemplateResult;
+  action: TemplateResult | typeof nothing;
+} {
+  return {
+    description: renderSettingsDefaultDescription(props.value, props.overridden),
+    action: props.overridden
+      ? html`
+          <button
+            type="button"
+            class="btn btn--icon"
+            title=${t("configForm.resetToDefault")}
+            aria-label=${t("configForm.resetToDefault")}
+            ?disabled=${props.disabled ?? false}
+            @click=${(event: Event) => {
+              event.stopPropagation();
+              props.onReset();
+            }}
+          >
+            ${icons.refresh}
+          </button>
+        `
+      : nothing,
+  };
+}
+
 export function renderSettingsSegmented<T extends string>(props: {
   value: T;
   options: ReadonlyArray<{ value: T; label: unknown; title?: string; testId?: string }>;

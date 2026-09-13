@@ -256,25 +256,6 @@ describe("active-memory trigger recall", () => {
     });
   });
 
-  it("shares one in-flight lane-1 lookup for the same run authority", async () => {
-  it("prewarms the exact lexical and trigger-candidate lookup path", async () => {
-    hoisted.search.mockResolvedValue([]);
-    hoisted.listTriggerCandidates.mockResolvedValue([]);
-
-    await prewarmTriggerRecall({
-      cfg: {} as never,
-      agentId: "main",
-      query: "flight booking",
-    });
-
-    expect(hoisted.getManager).toHaveBeenCalledWith({ cfg: {}, agentId: "main" });
-    expect(hoisted.search).toHaveBeenCalledWith(
-      "flight booking",
-      expect.objectContaining({ lexicalOnly: true, qmdSearchModeOverride: "search" }),
-    );
-    expect(hoisted.listTriggerCandidates).toHaveBeenCalledWith({ activeProjectKeys: [] });
-  });
-
   it("shares one in-flight prewarm with the lane-1 lookup for a run", async () => {
     let releaseLookup: () => void = () => {
       throw new Error("lookup gate was not initialized");

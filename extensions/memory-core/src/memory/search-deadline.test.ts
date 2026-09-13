@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isMemorySearchDeadlineError, runMemorySearchWithDeadline } from "./search-deadline.js";
-import { runMemorySearchWithDeadline, type MemorySearchDeadlineAction } from "./search-deadline.js";
+import {
+  isMemorySearchDeadlineError,
+  runMemorySearchWithDeadline,
+  type MemorySearchDeadlineAction,
+} from "./search-deadline.js";
 
 describe("runMemorySearchWithDeadline", () => {
   afterEach(() => {
@@ -40,6 +43,37 @@ describe("runMemorySearchWithDeadline", () => {
     await resultAssertion;
     expect(taskSignal?.aborted).toBe(true);
     expect(taskSignal?.reason).toEqual(new Error("memory_search timed out after 15s"));
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("labels memory reads without duplicating the deadline implementation", async () => {
+    vi.useFakeTimers();
+    const result = runMemorySearchWithDeadline({
+      timeoutMs: 15_000,
+      operation: "memory_get",
+      run: async () => await new Promise(() => {}),
+    });
+    const resultAssertion = expect(result).rejects.toThrow("memory_get timed out after 15s");
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    await resultAssertion;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("can let an aborted corpus task settle into a partial result", async () => {
+    vi.useFakeTimers();
+    const result = runMemorySearchWithDeadline({
+      timeoutMs: 15_000,
+      operation: "memory_get",
+      settleAfterDeadlineAbort: true,
+      run: async (signal) =>
+        await new Promise<string>((resolve) => {
+          signal.addEventListener("abort", () => resolve("partial"), { once: true });
+        }),
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    await expect(result).resolves.toBe("partial");
     expect(vi.getTimerCount()).toBe(0);
   });
 

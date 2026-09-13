@@ -12,6 +12,7 @@ import {
   readStringParam,
   resolveMemoryDreamingPluginConfig,
   type MemoryCorpusSearchResult,
+  type OpenClawConfig,
 } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
 import {
   resolveMemoryBackendConfig,
@@ -44,6 +45,7 @@ import {
   DEFAULT_MEMORY_SEARCH_TIMEOUT_MS,
   resolveMemorySearchAbortError,
   runMemorySearchWithDeadline,
+  type MemorySearchDeadlineAction,
 } from "./memory/search-deadline.js";
 import { recordShortTermRecalls } from "./short-term-promotion.js";
 import {
@@ -100,6 +102,36 @@ function readCorpusParam<T extends string>(
     return raw as T;
   }
   throw new Error(`corpus must be one of: ${allowed.join(", ")}`);
+}
+
+function normalizeActiveMemoryQmdSearchMode(
+  value: unknown,
+): "inherit" | "search" | "vsearch" | "query" {
+  return value === "inherit" || value === "search" || value === "vsearch" || value === "query"
+    ? value
+    : "search";
+}
+
+function resolveActiveMemoryQmdSearchModeOverride(
+  cfg: OpenClawConfig,
+  sessionKey?: string,
+): "search" | "vsearch" | "query" | undefined {
+  if (typeof sessionKey !== "string" || !sessionKey.includes(":active-memory:")) {
+    return undefined;
+  }
+  const entry = cfg.plugins?.entries?.["active-memory"];
+  const entryRecord =
+    entry && typeof entry === "object" && !Array.isArray(entry)
+      ? (entry as { config?: unknown })
+      : undefined;
+  const pluginConfig =
+    entryRecord?.config &&
+    typeof entryRecord.config === "object" &&
+    !Array.isArray(entryRecord.config)
+      ? (entryRecord.config as { qmd?: { searchMode?: unknown } })
+      : undefined;
+  const searchMode = normalizeActiveMemoryQmdSearchMode(pluginConfig?.qmd?.searchMode);
+  return searchMode === "inherit" ? undefined : searchMode;
 }
 
 function resolveMemorySearchToolCooldownKey(options: {
@@ -334,6 +366,7 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
         };
         const searchMemory = async (
           signal: AbortSignal,
+          controlDeadline: (action: MemorySearchDeadlineAction) => void,
         ): Promise<MemoryCorpusAttempt<PrimaryMemorySearchValue | null>> => {
           if (cooldown) {
             return { corpus: "memory", outcome: "unavailable", value: null, ...cooldown };
@@ -365,7 +398,11 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
                     ? ["memory"]
                     : undefined;
               return await executeMemorySearchToolQuery({
-                initialManager: { manager: memory.manager, managerMs: memory.debug?.managerMs },
+                initialManager: {
+                  manager: memory.manager,
+                  managerMs: memory.debug?.managerMs,
+                  managerCacheState: memory.debug?.managerCacheState,
+                },
                 refreshManager: async () => {
                   const refreshed = trackMemoryManager(
                     await getMemoryManagerContextWithPurpose({
@@ -378,7 +415,11 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
                   );
                   return "error" in refreshed
                     ? null
-                    : { manager: refreshed.manager, managerMs: refreshed.debug?.managerMs };
+                    : {
+                        manager: refreshed.manager,
+                        managerMs: refreshed.debug?.managerMs,
+                        managerCacheState: refreshed.debug?.managerCacheState,
+                      };
                 },
                 query: {
                   text: query,
@@ -390,10 +431,16 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
                   requestedCorpus,
                   sessionKey: options.agentSessionKey,
                   activeProjectKeys: options.activeProjectKeys,
+                  qmdSearchModeOverride: resolveActiveMemoryQmdSearchModeOverride(
+                    cfg,
+                    options.agentSessionKey,
+                  ),
                   conversationRecall: options.conversationRecall,
                 },
                 visibility: { cfg, agentId, sandboxed: options.sandboxed === true },
                 signal,
+                controlDeadline,
+                oneShotCliRun: options.oneShotCliRun,
               });
             },
           });
@@ -482,9 +529,9 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
           return await runMemoryCorpusDeadline({
             operation: "memory_search",
             parentSignal: callerSignal,
-            run: async (signal) => {
+            run: async (signal, controlDeadline) => {
               const [memory, wiki] = await Promise.all([
-                searchesMemory ? searchMemory(signal) : Promise.resolve(null),
+                searchesMemory ? searchMemory(signal, controlDeadline) : Promise.resolve(null),
                 searchesWiki
                   ? searchMemoryCorpusSupplements({
                       query,

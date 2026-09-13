@@ -62,6 +62,23 @@ vi.mock("../plugins/doctor-contract-registry.js", async () => {
   };
 });
 
+async function runOrphanTranscriptCheckWithQmdSessions(enabled: boolean, homeDir: string) {
+  const cfg: OpenClawConfig = {
+    agents: { entries: { main: { default: true } } },
+    memory: {
+      backend: "qmd",
+      qmd: { sessions: { enabled } },
+      search: { rememberAcrossConversations: false },
+    },
+  };
+  setupSessionState(cfg, process.env, homeDir);
+  const sessionsDir = resolveSessionTranscriptsDirForAgent("main", process.env, () => homeDir);
+  fs.writeFileSync(path.join(sessionsDir, "orphan-session.jsonl"), '{"type":"session"}\n');
+  const confirmRuntimeRepair = vi.fn(async () => false);
+  await noteStateIntegrity(cfg, { confirmRuntimeRepair, note: noteMock });
+  return confirmRuntimeRepair;
+}
+
 describe("doctor transcript and heartbeat session repairs", () => {
   let envSnapshot: ReturnType<typeof captureEnv>;
   let tempHome = "";
@@ -127,6 +144,24 @@ describe("doctor transcript and heartbeat session repairs", () => {
           .some((name) => name.startsWith(`orphan-${agentId}.jsonl.deleted.`)),
       ).toBe(true);
     }
+  });
+
+  it("suppresses orphan transcript warnings when QMD sessions are enabled", async () => {
+    const confirmRuntimeRepair = await runOrphanTranscriptCheckWithQmdSessions(true, tempHome);
+
+    expect(stateIntegrityText()).not.toContain(
+      "These .jsonl files are no longer referenced by sessions.json",
+    );
+    expect(confirmRuntimeRepair).not.toHaveBeenCalled();
+  });
+
+  it("still detects orphan transcripts when QMD sessions are disabled", async () => {
+    const confirmRuntimeRepair = await runOrphanTranscriptCheckWithQmdSessions(false, tempHome);
+
+    expect(stateIntegrityText()).toContain(
+      "These .jsonl files are no longer referenced by sessions.json",
+    );
+    expect(confirmRuntimeRepair).toHaveBeenCalled();
   });
 
   it("uses SQLite session rows for transcript integrity without orphan false positives", async () => {

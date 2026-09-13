@@ -29,9 +29,12 @@ export function createMemorySearchDeadlineError(message: string): Error {
   return error;
 }
 
-function createMemorySearchTimeoutError(timeoutMs: number): Error {
+function createMemorySearchTimeoutError(
+  timeoutMs: number,
+  operation: "memory_search" | "memory_get" = "memory_search",
+): Error {
   return createMemorySearchDeadlineError(
-    `memory_search timed out after ${Math.round(timeoutMs / 1000)}s`,
+    `${operation} timed out after ${Math.round(timeoutMs / 1000)}s`,
   );
 }
 
@@ -41,6 +44,8 @@ export function isMemorySearchDeadlineError(error: unknown): boolean {
 
 export async function runMemorySearchWithDeadline<T>(params: {
   timeoutMs: number;
+  operation?: "memory_search" | "memory_get";
+  settleAfterDeadlineAbort?: boolean;
   parentSignal?: AbortSignal;
   run: (
     signal: AbortSignal,
@@ -52,7 +57,7 @@ export async function runMemorySearchWithDeadline<T>(params: {
   }
 
   const controller = new AbortController();
-  const timeoutError = createMemorySearchTimeoutError(params.timeoutMs);
+  const timeoutError = createMemorySearchTimeoutError(params.timeoutMs, params.operation);
   const timeoutOutcome = { type: "timeout" } as const;
   const parentAbortOutcome = { type: "parent-abort" } as const;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -66,9 +71,12 @@ export async function runMemorySearchWithDeadline<T>(params: {
   });
   const reachDefaultDeadline = () => {
     acceptDeadlineUpdates = false;
-    // Resolve before aborting so abort-aware tasks cannot replace the stable
-    // deadline error with a provider-wrapped cancellation error.
-    resolveTimeout(timeoutOutcome);
+    // Strict callers receive the stable deadline before an abort-aware task can
+    // replace it with a provider-wrapped cancellation error. Corpus callers
+    // instead settle their aborted child attempts into partial-result metadata.
+    if (!params.settleAfterDeadlineAbort) {
+      resolveTimeout(timeoutOutcome);
+    }
     controller.abort(timeoutError);
   };
   const scheduleDefaultDeadline = () => {
@@ -128,6 +136,7 @@ export async function runMemorySearchWithDeadline<T>(params: {
       throw resolveMemorySearchAbortError(parentSignal);
     }
     if (
+      !params.settleAfterDeadlineAbort &&
       acceptDeadlineUpdates &&
       timer !== undefined &&
       Date.now() - deadlineStartedAt >= remainingMs

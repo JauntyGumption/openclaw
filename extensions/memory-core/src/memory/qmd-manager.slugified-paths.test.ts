@@ -284,6 +284,7 @@ describe("QmdMemoryManager slugified path resolution", () => {
 
     const result = expectDefined(results[0], "slugified QMD search result");
     await expect(manager.readFile({ relPath: result.path })).resolves.toEqual({
+      status: "ok",
       path: actualRelative,
       text: "line-1\nline-2\nline-3",
       from: 1,
@@ -362,6 +363,7 @@ describe("QmdMemoryManager slugified path resolution", () => {
 
     const result = expectDefined(results[0], "vault QMD search result");
     await expect(manager.readFile({ relPath: result.path })).resolves.toEqual({
+      status: "ok",
       path: `qmd/${collectionName}/${actualRelative}`,
       text: "vault memory",
       from: 1,
@@ -427,6 +429,7 @@ describe("QmdMemoryManager slugified path resolution", () => {
 
     const result = expectDefined(results[0], "exact QMD search result");
     await expect(manager.readFile({ relPath: result.path })).resolves.toEqual({
+      status: "ok",
       path: exactRelative,
       text: "exact slugified path",
       from: 1,

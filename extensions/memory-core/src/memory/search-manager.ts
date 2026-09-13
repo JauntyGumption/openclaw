@@ -779,7 +779,7 @@ async function closeMemorySearchManagerWithinLifecycle(params: {
   if (managerRuntimeLoader.peek()) {
     try {
       const { closeMemoryIndexManagersForAgent } = await loadManagerRuntime();
-      await closeMemoryIndexManagersForAgent({ cfg: params.cfg, agentId: normalizedAgentId });
+      await closeMemoryIndexManagersForAgent({ agentId: normalizedAgentId });
     } catch (err) {
       if (!closeFailed) {
         closeError = err;

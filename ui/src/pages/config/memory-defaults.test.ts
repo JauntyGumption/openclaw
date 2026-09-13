@@ -1,7 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { dreamingConfigPath, resolveDreamingTimezoneDefault } from "./memory-defaults.ts";
-
-describe("memory curated defaults", () => {
 import { describe, expect, it, vi } from "vitest";
 import {
   dreamingConfigPath,

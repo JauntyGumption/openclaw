@@ -8,6 +8,11 @@ import {
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
 import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry";
+import {
+  MEMORY_SEARCH_DEADLINE_CONTROL,
+  type MemorySearchDeadlineAction,
+  type MemorySearchDeadlineControlOptions,
+} from "./memory/search-deadline.js";
 import { filterMemorySearchHitsBySessionVisibility } from "./session-search-visibility.js";
 import { buildMemorySearchUnavailableResult } from "./tools.shared.js";
 
@@ -24,7 +29,11 @@ export function buildPausedMemoryIndexUnavailableResult(reason: string) {
   });
 }
 
-type ManagerState = { manager: MemorySearchManager; managerMs?: number };
+type ManagerState = {
+  manager: MemorySearchManager;
+  managerMs?: number;
+  managerCacheState?: string;
+};
 
 type MemorySearchToolQuery = {
   text: string;
@@ -36,6 +45,7 @@ type MemorySearchToolQuery = {
   requestedCorpus?: "memory" | "wiki" | "all" | "sessions";
   sessionKey?: string;
   activeProjectKeys?: readonly string[];
+  qmdSearchModeOverride?: "query" | "search" | "vsearch";
   conversationRecall?: OpenClawPluginToolContext["conversationRecall"];
 };
 
@@ -55,12 +65,42 @@ function isClosedMemoryStoreError(error: unknown): boolean {
   );
 }
 
+function mergeQmdRuntimeDebug(
+  entries: readonly MemorySearchRuntimeDebug[],
+): MemorySearchRuntimeDebug["qmd"] | undefined {
+  const merged: NonNullable<MemorySearchRuntimeDebug["qmd"]> = {};
+  for (const entry of entries) {
+    const qmd = entry.qmd;
+    if (!qmd) {
+      continue;
+    }
+    if (!merged.collectionValidation && qmd.collectionValidation) {
+      merged.collectionValidation = qmd.collectionValidation;
+    }
+    if (qmd.multiCollectionProbe) {
+      merged.multiCollectionProbe = qmd.multiCollectionProbe;
+    }
+    if (qmd.searchPlan) {
+      merged.searchPlan = qmd.searchPlan;
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function mergeEmbeddingBootstrapRuntimeDebug(
+  entries: readonly MemorySearchRuntimeDebug[],
+): MemorySearchRuntimeDebug["embeddingBootstrap"] | undefined {
+  return entries.findLast((entry) => entry.embeddingBootstrap)?.embeddingBootstrap;
+}
+
 export async function executeMemorySearchToolQuery(params: {
   initialManager: ManagerState;
   refreshManager: () => Promise<ManagerState | null>;
   query: MemorySearchToolQuery;
   visibility: MemorySearchToolVisibility;
   signal: AbortSignal;
+  controlDeadline: (action: MemorySearchDeadlineAction) => void;
+  oneShotCliRun?: boolean;
 }) {
   const startedAt = Date.now();
   const runtimeDebug: MemorySearchRuntimeDebug[] = [];
@@ -98,10 +138,13 @@ export async function executeMemorySearchToolQuery(params: {
       minScore: query.minScore,
       sessionKey: query.sessionKey,
       activeProjectKeys: query.activeProjectKeys ? [...query.activeProjectKeys] : undefined,
+      qmdSearchModeOverride: query.qmdSearchModeOverride,
       signal,
       onDebug: (debug) => runtimeDebug.push(debug),
+      [MEMORY_SEARCH_DEADLINE_CONTROL]: params.controlDeadline,
       ...(searchSources ? { sources: searchSources } : {}),
-    });
+    } as NonNullable<Parameters<MemorySearchManager["search"]>[1]> &
+      MemorySearchDeadlineControlOptions);
     return { candidates, searchWindow };
   };
 
@@ -120,8 +163,8 @@ export async function executeMemorySearchToolQuery(params: {
     searched = await searchOnce();
   }
 
-  const status = active.manager.status();
-  const pausedIndexIdentityReason = resolveMemoryIndexIdentityReason(status);
+  let status = active.manager.status();
+  let pausedIndexIdentityReason = resolveMemoryIndexIdentityReason(status);
   if (pausedIndexIdentityReason) {
     return {
       status,
@@ -130,6 +173,31 @@ export async function executeMemorySearchToolQuery(params: {
       searchMode: undefined,
       debug: undefined,
     };
+  }
+
+  // One-shot CLI managers have no background lifecycle. Preserve their QMD
+  // bootstrap retry, while long-lived managers keep update work off the tool
+  // hot path and builtin managers retain their current single-search behavior.
+  if (
+    searched.candidates.length === 0 &&
+    params.oneShotCliRun === true &&
+    status.backend === "qmd" &&
+    active.manager.sync &&
+    !runtimeDebug.some((entry) => entry.embeddingBootstrap)
+  ) {
+    await active.manager.sync({ reason: "search", force: true });
+    searched = await searchOnce();
+    status = active.manager.status();
+    pausedIndexIdentityReason = resolveMemoryIndexIdentityReason(status);
+    if (pausedIndexIdentityReason) {
+      return {
+        status,
+        rawResults: [],
+        pausedIndexIdentityReason,
+        searchMode: undefined,
+        debug: undefined,
+      };
+    }
   }
 
   let filtered = await filterMemorySearchHitsBySessionVisibility({
@@ -153,6 +221,7 @@ export async function executeMemorySearchToolQuery(params: {
   const postFilterHits = filtered.length;
   const rawResults = filtered.slice(0, query.resultLimit);
   const latestDebug = runtimeDebug.at(-1);
+  const embeddingBootstrap = mergeEmbeddingBootstrapRuntimeDebug(runtimeDebug);
   return {
     status,
     rawResults,
@@ -161,12 +230,16 @@ export async function executeMemorySearchToolQuery(params: {
     debug: {
       backend: status.backend,
       configuredMode: latestDebug?.configuredMode,
-      effectiveMode: "n/a",
+      effectiveMode:
+        status.backend === "qmd"
+          ? (latestDebug?.effectiveMode ?? latestDebug?.configuredMode)
+          : "n/a",
       fallback: latestDebug?.fallback,
       managerMs: active.managerMs,
+      managerCacheState: active.managerCacheState,
       searchMs: Math.max(0, Date.now() - startedAt),
-      embeddingBootstrap: runtimeDebug.findLast((entry) => entry.embeddingBootstrap)
-        ?.embeddingBootstrap,
+      embeddingBootstrap,
+      qmd: mergeQmdRuntimeDebug(runtimeDebug),
       hits: rawResults.length,
       candidateHits: searched.candidates.length,
       withheldHits: Math.max(0, searched.candidates.length - postFilterHits),

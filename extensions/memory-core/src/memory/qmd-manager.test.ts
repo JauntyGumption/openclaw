@@ -5246,6 +5246,7 @@ describe("QmdMemoryManager", () => {
     const { manager } = await createManager();
 
     await expect(manager.readFile({ relPath: "qmd/sessions-main/export.md" })).resolves.toEqual({
+      status: "not_found",
       path: "qmd/sessions-main/export.md",
       text: "",
     });
@@ -5389,7 +5390,11 @@ describe("QmdMemoryManager", () => {
       const restoreOpen = "installOpenSpy" in testCase ? testCase.installOpenSpy() : undefined;
       try {
         const result = await manager.readFile(testCase.request);
-        expect(result, testCase.name).toEqual({ text: "", path: testCase.expectedPath });
+        expect(result, testCase.name).toEqual({
+          status: "not_found",
+          text: "",
+          path: testCase.expectedPath,
+        });
       } finally {
         restoreOpen?.();
         await manager.close();

@@ -9,14 +9,12 @@ import {
   statSessionEntrySync,
 } from "openclaw/plugin-sdk/memory-core-host-engine-sessions";
 import type { MemorySyncParams } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
-import { resetPluginStateStoreForTests } from "openclaw/plugin-sdk/plugin-state-test-runtime";
-} from "openclaw/plugin-sdk/memory-core-host-engine-qmd";
 import {
   MEMORY_CHUNKING_VERSION,
   type MemorySource,
-  type MemorySyncParams,
   type MemorySyncProgressUpdate,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
+import { resetPluginStateStoreForTests } from "openclaw/plugin-sdk/plugin-state-test-runtime";
 import {
   clearConfigCache,
   clearRuntimeConfigSnapshot,

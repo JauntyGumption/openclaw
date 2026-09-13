@@ -126,6 +126,8 @@ vi.mock("../plugins/manifest-owner-policy.js", () => ({
 vi.mock("../plugins/provider-public-artifacts.js", () => ({
   listTrustedExternalProviderPolicyOwners,
   loadTrustedExternalProviderPolicyArtifacts,
+}));
+
 vi.mock("../memory-host-sdk/engine-qmd.js", () => ({
   checkQmdBinaryAvailability,
   resolveQmdBinaryUnavailableReason: (result: { reason?: string }) => result.reason ?? "binary",
@@ -380,15 +382,13 @@ describe("noteMemorySearchHealth", () => {
     resolveManifestOwnerBasePolicyBlock.mockReset();
     resolveManifestOwnerBasePolicyBlock.mockReturnValue(null);
     resolveActiveMemoryBackendConfig.mockReset();
-    resolveActiveMemoryBackendConfig.mockReturnValue({ backend: "builtin" });
-    getActiveMemorySearchManagerCore.mockResolvedValue({
     resolveActiveMemoryBackendConfig.mockImplementation(
       ({ cfg: cfgLocal }: { cfg: OpenClawConfig }) =>
         cfgLocal.memory?.backend === "qmd"
           ? { backend: "qmd", qmd: cfgLocal.memory.qmd ?? {} }
           : { backend: "builtin" },
     );
-    getActiveMemorySearchManager.mockResolvedValue({
+    getActiveMemorySearchManagerCore.mockResolvedValue({
       manager: {
         status: () => ({ workspaceDir: "/tmp/agent-default/workspace", backend: "builtin" }),
         close: vi.fn(async () => {}),
@@ -729,7 +729,6 @@ describe("noteMemorySearchHealth", () => {
     await runMemorySearchHealth("auto", {});
 
     expect(resolveApiKeyForProviderCore).not.toHaveBeenCalled();
-    expect(resolveApiKeyForProvider).not.toHaveBeenCalled();
     expect(checkQmdBinaryAvailability).not.toHaveBeenCalled();
     expect(note).toHaveBeenCalledTimes(1);
     expect(firstNoteMessage()).toContain("No active memory plugin is registered");
@@ -770,7 +769,6 @@ describe("noteMemorySearchHealth", () => {
     const config = { session: { dmScope: "per-peer" }, plugins } as unknown as OpenClawConfig;
     await runConfiguredMemorySearch("auto", config);
     expect(resolveApiKeyForProviderCore).not.toHaveBeenCalled();
-    expect(resolveApiKeyForProvider).not.toHaveBeenCalled();
     expect(checkQmdBinaryAvailability).not.toHaveBeenCalled();
     if (isActive) {
       expect(note).not.toHaveBeenCalled();
@@ -802,7 +800,6 @@ describe("noteMemorySearchHealth", () => {
     resolveActiveMemoryBackendConfig.mockReturnValue(null);
     await runMemorySearchHealth("auto", options);
     expect(resolveApiKeyForProviderCore).not.toHaveBeenCalled();
-    expect(resolveApiKeyForProvider).not.toHaveBeenCalled();
     expect(checkQmdBinaryAvailability).not.toHaveBeenCalled();
     if (shouldWarn) {
       expect(note).toHaveBeenCalledTimes(1);

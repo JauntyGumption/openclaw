@@ -177,6 +177,22 @@ describe("managed local embedding setup health check", () => {
     expect(inspect.mock.calls.map(([params]) => params.provider)).toEqual(["local"]);
   });
 
+  it("ignores a stale builtin semantic index when qmd owns memory", async () => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "memory-setup-qmd-"));
+    roots.add(stateDir);
+    await createSemanticIndex(stateDir);
+    const inspect = vi.fn<InspectManagedLocalEmbeddingSetup>(async () => ({
+      provider: "local",
+      reason: "Local embeddings need the managed llama.cpp server config.",
+    }));
+    const check = captureCheck(inspect);
+    const checkContext = context(stateDir, "local");
+    checkContext.cfg.memory = { ...checkContext.cfg.memory, backend: "qmd" };
+
+    await expect(check.detect(checkContext)).resolves.toEqual([]);
+    expect(inspect).not.toHaveBeenCalled();
+  });
+
   it("reports a structured blocker when the local provider plugin is unavailable", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "memory-setup-plugin-missing-"));
     roots.add(stateDir);

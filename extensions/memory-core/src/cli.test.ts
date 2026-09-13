@@ -1872,7 +1872,7 @@ describe("memory cli", () => {
 
       expectCliSync(sync);
       expectLogged(log, "QMD index: ");
-      expect(log).toHaveBeenCalledWith("Memory index updated (main).");
+      expect(log).toHaveBeenCalledWith("Memory index updated (main): 0 files indexed.");
       expect(close).toHaveBeenCalled();
     });
   });

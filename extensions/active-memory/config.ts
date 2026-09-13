@@ -7,6 +7,7 @@ import {
 } from "openclaw/plugin-sdk/number-runtime";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import {
+  asRecord,
   asOptionalRecord,
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,

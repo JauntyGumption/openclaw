@@ -48,7 +48,7 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
       throw err;
     }
     if (statResult.missing) {
-      return { text: "", path: relPath };
+      return { status: "not_found", text: "", path: relPath };
     }
     if (params.from !== undefined || params.lines !== undefined) {
       const startLine = normalizePositiveInteger(params.from, 1);
@@ -58,7 +58,7 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
       );
       const partial = await this.readPartialText(absPath, startLine, requestedCount);
       if (partial.missing) {
-        return { text: "", path: relPath };
+        return { status: "not_found", text: "", path: relPath };
       }
       return buildMemoryReadResultFromSlice({
         selectedLines: partial.selectedLines,
@@ -71,7 +71,7 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
     }
     const full = await this.readFullText(absPath);
     if (full.missing) {
-      return { text: "", path: relPath };
+      return { status: "not_found", text: "", path: relPath };
     }
     return buildMemoryReadResult({
       content: full.text,

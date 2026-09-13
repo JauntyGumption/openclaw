@@ -31,7 +31,6 @@ import {
 } from "../agents/memory/dreaming.ts";
 import "./memory-dreaming-page.ts";
 import "./memory-memories.ts";
-import { dreamingConfigPath, resolveDreamingTimezoneDefault } from "./memory-defaults.ts";
 import {
   dreamingConfigPath,
   resetMemoryBackend,
@@ -637,6 +636,7 @@ class MemorySettingsPage extends OpenClawLightDomElement {
   }
 
   override render() {
+    const runtimeConfig = this.context.runtimeConfig;
     const engineSelection = resolveMemoryEngineSelection(this.configObject);
     const engineMutationDisabled =
       this.mutationDisabled || (this.catalog.kind === "ready" && !this.catalog.mutationAllowed);

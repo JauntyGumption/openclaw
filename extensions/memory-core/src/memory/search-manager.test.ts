@@ -922,7 +922,6 @@ describe("getMemorySearchManager caching", () => {
     expect(secondPrimary.close).toHaveBeenCalledTimes(2);
     expect(firstPrimary.close).toHaveBeenCalledTimes(2);
     expect(mockCloseMemoryIndexManagersForAgent).toHaveBeenCalledWith({
-      cfg: firstCfg,
       agentId,
     });
 
@@ -1488,7 +1487,6 @@ describe("getMemorySearchManager caching", () => {
     const mainManager = requireManager(main);
     const otherManager = requireManager(other);
 
-    expect(closeMemoryIndexManagersForAgent).toHaveBeenCalledWith({ agentId: "main" });
     await closeMemorySearchManager({ cfg: mainCfg, agentId: "main" });
 
     expect(mockPrimary.close).toHaveBeenCalledTimes(1);
@@ -1530,7 +1528,6 @@ describe("getMemorySearchManager caching", () => {
     await closeMemorySearchManager({ cfg, agentId: "main" });
 
     expect(mockCloseMemoryIndexManagersForAgent).toHaveBeenCalledWith({
-      cfg,
       agentId: "main",
     });
   });

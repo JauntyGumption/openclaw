@@ -69,8 +69,9 @@ function createQmdTimeoutSearchTool(options?: { oneShotCliRun?: boolean }) {
 function expectMemorySearchTimeout(details: unknown, seconds: number): void {
   expectUnavailableMemorySearchDetails(details, {
     error: `memory_search timed out after ${seconds}s`,
-    warning: "Memory search is unavailable due to an embedding/provider error.",
-    action: "Check embedding provider configuration and retry memory_search.",
+    warning: "Memory search did not finish within its time limit.",
+    action:
+      "Retry memory_search after a short wait: a memory-corpus timeout pauses retries for up to a minute. If memory-corpus timeouts persist, run: openclaw memory status --deep --agent main, and rebuild with openclaw memory index --force --agent main only if it reports the index dirty or incomplete",
   });
 }
 
@@ -717,7 +718,24 @@ describe("memory_search unavailable payloads", () => {
 
       expect(settled).toBe(true);
       const result = await resultPromise;
-      expectMemorySearchTimeout(result.details, 15);
+      expect(result.details).toEqual({
+        results: [],
+        provider: undefined,
+        model: undefined,
+        fallback: undefined,
+        citations: "auto",
+        mode: undefined,
+        corpora: [
+          {
+            corpus: "wiki",
+            outcome: "unavailable",
+            error: "memory_search timed out after 15s",
+          },
+        ],
+        warning: "Wiki corpus unavailable: memory_search timed out after 15s",
+        error: "memory_search timed out after 15s",
+        debug: undefined,
+      });
       expect(getMemorySearchManagerMockCalls()).toBe(0);
     } finally {
       vi.useRealTimers();

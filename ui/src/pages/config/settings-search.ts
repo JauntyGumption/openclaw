@@ -51,6 +51,19 @@ const CURATED_ROUTE_VISIBLE_KEYS: Partial<Record<string, () => readonly string[]
 
 function visibleSectionSchema(routeId: string, sectionSchema: JsonSchema): JsonSchema {
   const visibleKeys = CURATED_ROUTE_VISIBLE_KEYS[routeId];
+  const properties = sectionSchema.properties;
+  if (!visibleKeys || !properties) {
+    return sectionSchema;
+  }
+  const visible = new Set(visibleKeys());
+  return {
+    ...sectionSchema,
+    properties: Object.fromEntries(
+      Object.entries(properties).filter(([child]) => visible.has(child)),
+    ),
+  };
+}
+
 /**
  * The Memory page hides `memory.*` children the current engine/backend makes
  * inapplicable — `memory.qmd` only renders once qmd is the selected backend.
@@ -62,10 +75,9 @@ function visibleMemorySchema(
   config: Record<string, unknown>,
 ): JsonSchema {
   const properties = sectionSchema.properties;
-  if (!visibleKeys || !properties) {
+  if (!properties) {
     return sectionSchema;
   }
-  const visible = new Set(visibleKeys());
   const visible = new Set(memoryVisibleSchemaKeys(resolveMemoryBackend(config)));
   return {
     ...sectionSchema,
@@ -157,8 +169,9 @@ export function findSettingsSearchBlocks(params: {
     const sectionSchema =
       key === "wizard"
         ? setupVisibleSchema(rawSectionSchema)
-        : visibleSectionSchema(routeId, rawSectionSchema);
-      routeId === "memory" ? visibleMemorySchema(rawSectionSchema, value) : rawSectionSchema;
+        : routeId === "memory"
+          ? visibleMemorySchema(rawSectionSchema, value)
+          : visibleSectionSchema(routeId, rawSectionSchema);
     const meta = SECTION_META[key];
     const tierSplit = splitConfigSchemaByTier({
       schema: sectionSchema,

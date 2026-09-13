@@ -99,6 +99,9 @@ export async function collectVectorProviderFindings(
   },
   inspectProvider: InspectConfiguredProvider,
 ): Promise<VectorProviderFinding[]> {
+  if (params.config.memory?.backend === "qmd") {
+    return [];
+  }
   const findings: VectorProviderFinding[] = [];
   for (const agentId of listConfiguredAgentIds(params.config)) {
     // A custom agentDir does not move the canonical per-agent memory index.

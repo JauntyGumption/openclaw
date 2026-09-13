@@ -72,7 +72,6 @@ async function captureProof(page: Page, name: string, locator?: Locator) {
 }
 
 suite.define(() => {
-  it("persists a cleared dreaming frequency and preserves the explicit engine across reload", async () => {
   it("persists engine, backend, and dreaming resets and reloads inherited defaults", async () => {
     await suite.withPage(
       {
@@ -131,11 +130,6 @@ suite.define(() => {
         await captureProof(page, "01-explicit-engine-backend.png");
         await captureProof(page, "02-explicit-dreaming.png", scheduleSection(page));
 
-        await frequencyRow.getByRole("textbox").fill("");
-        await frequencyRow.getByRole("textbox").blur();
-
-        const saved = requestRaw(await gateway.waitForRequest("config.set"));
-        expect(saved).toHaveProperty("plugins.slots.memory", "memory-core");
         await engineRow.getByRole("button", { name: "Reset to default" }).click();
         await backendRow.getByRole("button", { name: "Reset to default" }).click();
         await frequencyRow.getByRole("button", { name: "Reset to default" }).click();
@@ -158,7 +152,7 @@ suite.define(() => {
         const reloadedFrequencyRow = settingsRow(page, "Dreaming frequency");
         await expect
           .poll(() => reloadedEngineRow.textContent())
-          .toContain("Default: OpenClaw Memory");
+          .toContain("Using default: OpenClaw Memory");
         await expect
           .poll(() => reloadedBackendRow.textContent())
           .toContain("Using default: Built-in");
@@ -169,7 +163,6 @@ suite.define(() => {
         await expect
           .poll(() => reloadedFrequencyRow.getByRole("textbox").getAttribute("placeholder"))
           .toBe("0 3 * * *");
-        await captureProof(page, "03-preserved-engine.png");
         await expect
           .poll(() => page.getByRole("button", { name: "Reset to default" }).count())
           .toBe(1);
