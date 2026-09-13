@@ -1,0 +1,144 @@
+From d0eaeeb504d98b19d7e66b4c95e826ad03b52670 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 13 Sep 2026 02:50:28 +0200
+Subject: [PATCH] fix(qmd): share corpus deadline control
+
+---
+ extensions/memory-core/src/memory-corpus.ts   | 38 ++++++-------------
+ .../src/memory/search-deadline.test.ts        | 21 +++++++++-
+ .../memory-core/src/memory/search-deadline.ts | 10 +++--
+ 3 files changed, 38 insertions(+), 31 deletions(-)
+
+diff --git a/extensions/memory-core/src/memory-corpus.ts b/extensions/memory-core/src/memory-corpus.ts
+index 16406c11e4b..cc77305e875 100644
+--- a/extensions/memory-core/src/memory-corpus.ts
++++ b/extensions/memory-core/src/memory-corpus.ts
+@@ -5,10 +5,11 @@ import {
+   type MemoryCorpusSearchResult,
+ } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
+ import {
+-  createMemorySearchDeadlineError,
+   DEFAULT_MEMORY_SEARCH_TIMEOUT_MS,
+   isMemorySearchDeadlineError,
+   resolveMemorySearchAbortError,
++  runMemorySearchWithDeadline,
++  type MemorySearchDeadlineAction,
+ } from "./memory/search-deadline.js";
+ 
+ type MemoryCorpus = "memory" | "wiki";
+@@ -94,32 +95,17 @@ export async function attemptMemoryCorpus<T>(params: {
+ export async function runMemoryCorpusDeadline<T>(params: {
+   operation: "memory_search" | "memory_get";
+   parentSignal?: AbortSignal;
+-  run: (signal: AbortSignal) => Promise<T>;
++  run: (
++    signal: AbortSignal,
++    controlDeadline: (action: MemorySearchDeadlineAction) => void,
++  ) => Promise<T>;
+ }): Promise<T> {
+-  if (params.parentSignal?.aborted) {
+-    throw resolveMemorySearchAbortError(params.parentSignal);
+-  }
+-  const controller = new AbortController();
+-  const timer = setTimeout(() => {
+-    controller.abort(
+-      createMemorySearchDeadlineError(
+-        `${params.operation} timed out after ${DEFAULT_MEMORY_SEARCH_TIMEOUT_MS / 1000}s`,
+-      ),
+-    );
+-  }, DEFAULT_MEMORY_SEARCH_TIMEOUT_MS);
+-  timer.unref?.();
+-  const onParentAbort = () => controller.abort(resolveMemorySearchAbortError(params.parentSignal!));
+-  params.parentSignal?.addEventListener("abort", onParentAbort, { once: true });
+-  try {
+-    const result = await params.run(controller.signal);
+-    if (params.parentSignal?.aborted) {
+-      throw resolveMemorySearchAbortError(params.parentSignal);
+-    }
+-    return result;
+-  } finally {
+-    clearTimeout(timer);
+-    params.parentSignal?.removeEventListener("abort", onParentAbort);
+-  }
++  return await runMemorySearchWithDeadline({
++    timeoutMs: DEFAULT_MEMORY_SEARCH_TIMEOUT_MS,
++    operation: params.operation,
++    parentSignal: params.parentSignal,
++    run: params.run,
++  });
+ }
+ 
+ export function composeMemoryCorpusMetadata(
+diff --git a/extensions/memory-core/src/memory/search-deadline.test.ts b/extensions/memory-core/src/memory/search-deadline.test.ts
+index 755de925bad..04b00e29753 100644
+--- a/extensions/memory-core/src/memory/search-deadline.test.ts
++++ b/extensions/memory-core/src/memory/search-deadline.test.ts
+@@ -1,6 +1,9 @@
+ import { afterEach, describe, expect, it, vi } from "vitest";
+-import { isMemorySearchDeadlineError, runMemorySearchWithDeadline } from "./search-deadline.js";
+-import { runMemorySearchWithDeadline, type MemorySearchDeadlineAction } from "./search-deadline.js";
++import {
++  isMemorySearchDeadlineError,
++  runMemorySearchWithDeadline,
++  type MemorySearchDeadlineAction,
++} from "./search-deadline.js";
+ 
+ describe("runMemorySearchWithDeadline", () => {
+   afterEach(() => {
+@@ -43,6 +46,20 @@ describe("runMemorySearchWithDeadline", () => {
+     expect(vi.getTimerCount()).toBe(0);
+   });
+ 
++  it("labels memory reads without duplicating the deadline implementation", async () => {
++    vi.useFakeTimers();
++    const result = runMemorySearchWithDeadline({
++      timeoutMs: 15_000,
++      operation: "memory_get",
++      run: async () => await new Promise(() => {}),
++    });
++    const resultAssertion = expect(result).rejects.toThrow("memory_get timed out after 15s");
++    await vi.advanceTimersByTimeAsync(15_000);
++
++    await resultAssertion;
++    expect(vi.getTimerCount()).toBe(0);
++  });
++
+   it("marks its own deadline error and nothing that merely reads like one", async () => {
+     vi.useFakeTimers();
+     const result = runMemorySearchWithDeadline({
+diff --git a/extensions/memory-core/src/memory/search-deadline.ts b/extensions/memory-core/src/memory/search-deadline.ts
+index b60b57630c0..f227a19fb81 100644
+--- a/extensions/memory-core/src/memory/search-deadline.ts
++++ b/extensions/memory-core/src/memory/search-deadline.ts
+@@ -29,9 +29,12 @@ export function createMemorySearchDeadlineError(message: string): Error {
+   return error;
+ }
+ 
+-function createMemorySearchTimeoutError(timeoutMs: number): Error {
++function createMemorySearchTimeoutError(
++  timeoutMs: number,
++  operation: "memory_search" | "memory_get" = "memory_search",
++): Error {
+   return createMemorySearchDeadlineError(
+-    `memory_search timed out after ${Math.round(timeoutMs / 1000)}s`,
++    `${operation} timed out after ${Math.round(timeoutMs / 1000)}s`,
+   );
+ }
+ 
+@@ -41,6 +44,7 @@ export function isMemorySearchDeadlineError(error: unknown): boolean {
+ 
+ export async function runMemorySearchWithDeadline<T>(params: {
+   timeoutMs: number;
++  operation?: "memory_search" | "memory_get";
+   parentSignal?: AbortSignal;
+   run: (
+     signal: AbortSignal,
+@@ -52,7 +56,7 @@ export async function runMemorySearchWithDeadline<T>(params: {
+   }
+ 
+   const controller = new AbortController();
+-  const timeoutError = createMemorySearchTimeoutError(params.timeoutMs);
++  const timeoutError = createMemorySearchTimeoutError(params.timeoutMs, params.operation);
+   const timeoutOutcome = { type: "timeout" } as const;
+   const parentAbortOutcome = { type: "parent-abort" } as const;
+   let timer: ReturnType<typeof setTimeout> | undefined;
