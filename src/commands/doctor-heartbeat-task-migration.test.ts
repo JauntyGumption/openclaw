@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import * as sessionAccessor from "../config/sessions/session-accessor.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -25,7 +25,12 @@ const tempDirs: string[] = [];
 let originalHome: string | undefined;
 let originalStateDir: string | undefined;
 
-function createTestCronService(storePath: string, cfg: OpenClawConfig, nowMs: number): CronService {
+function createTestCronService(
+  storePath: string,
+  cfg: OpenClawConfig,
+  nowMs: number,
+  defaultAgentId = resolveDefaultAgentId(cfg),
+): CronService {
   const noop = () => {};
   const log = { debug: noop, info: noop, warn: noop, error: noop };
   return new CronService({
@@ -33,7 +38,7 @@ function createTestCronService(storePath: string, cfg: OpenClawConfig, nowMs: nu
     nowMs: () => nowMs,
     cronEnabled: false,
     cronConfig: cfg.cron,
-    defaultAgentId: resolveDefaultAgentId(cfg),
+    defaultAgentId,
     log,
     enqueueSystemEvent: () => false,
     requestHeartbeat: noop,
@@ -120,6 +125,66 @@ tasks:
     },
   );
   return { cfg, env, monitor, nowMs, session, storePath };
+}
+
+async function writeHeartbeatFile(
+  fixture: Pick<Awaited<ReturnType<typeof createFixture>>, "cfg" | "env">,
+  content: string,
+  agentId = "main",
+) {
+  const workspaceDir = resolveAgentWorkspaceDir(fixture.cfg, agentId);
+  await fs.mkdir(workspaceDir, { recursive: true });
+  const heartbeatPath = path.join(workspaceDir, "HEARTBEAT.md");
+  await fs.writeFile(heartbeatPath, content, "utf8");
+  return heartbeatPath;
+}
+
+async function createSharedFileFixture(params: {
+  nowMs: number;
+  disabledOps?: boolean;
+  content?: string;
+}) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-heartbeat-task-shared-"));
+  tempDirs.push(root);
+  const env = { ...process.env, HOME: path.join(root, "home"), OPENCLAW_STATE_DIR: root };
+  process.env.HOME = env.HOME;
+  process.env.OPENCLAW_STATE_DIR = env.OPENCLAW_STATE_DIR;
+  const workspace = path.join(root, "workspace");
+  await fs.mkdir(workspace, { recursive: true });
+  const cfg = {
+    agents: {
+      defaults: { heartbeat: { every: "30m" } },
+      list: [
+        { id: "main", workspace, heartbeat: { every: "30m" } },
+        {
+          id: "ops",
+          workspace,
+          heartbeat: { every: params.disabledOps ? "0m" : "30m" },
+        },
+      ],
+    },
+  } as OpenClawConfig;
+  const storePath = resolveCronJobsStorePathFromConfig(cfg, env);
+  const cron = createTestCronService(storePath, cfg, params.nowMs, "main");
+  for (const spec of resolveHeartbeatMonitorPlan(cfg, []).specs) {
+    await cron.add(spec.input, { enabledExplicit: true, systemOwned: true });
+  }
+  const heartbeatPath = path.join(workspace, "HEARTBEAT.md");
+  await fs.writeFile(
+    heartbeatPath,
+    params.content ??
+      `# Shared operations
+
+tasks:
+  - name: inbox
+    interval: 1h
+    prompt: Check urgent inbox items
+
+# Keep this prose
+`,
+    "utf8",
+  );
+  return { cfg, env, heartbeatPath, nowMs: params.nowMs, storePath, workspace };
 }
 
 async function createExistingInboxJob(fixture: Awaited<ReturnType<typeof createFixture>>) {
@@ -302,6 +367,229 @@ describe("heartbeat scratch task cron migration", () => {
     expect(
       (await loadCronJobsStore(fixture.storePath)).jobs.filter(isHeartbeatTaskCronJob),
     ).toHaveLength(2);
+  });
+
+  it("previews file tasks without mutation, then strips only their declarations", async () => {
+    const fixture = await createFixture(2_000_000_000_000, "operator scratch stays here\n");
+    const heartbeatPath = await writeHeartbeatFile(
+      fixture,
+      `# Authored guidance
+
+Review alerts with judgment.
+
+tasks:
+  - name: inbox
+    interval: 1h
+    prompt: Check urgent inbox items
+
+# Preserve this section
+`,
+    );
+    const original = await fs.readFile(heartbeatPath, "utf8");
+
+    await expect(collectHeartbeatTaskMigrationFindings(fixture.cfg, fixture.env)).resolves.toEqual([
+      expect.objectContaining({
+        requirement: "heartbeat-tasks-in-file",
+        path: heartbeatPath,
+        target: "main",
+      }),
+    ]);
+    await expect(
+      maybeMigrateHeartbeatTasksToCron({
+        cfg: fixture.cfg,
+        env: fixture.env,
+        shouldRepair: false,
+        nowMs: fixture.nowMs,
+      }),
+    ).resolves.toEqual({ changes: [], warnings: [] });
+    await expect(fs.readFile(heartbeatPath, "utf8")).resolves.toBe(original);
+
+    const migrated = await maybeMigrateHeartbeatTasksToCron({
+      cfg: fixture.cfg,
+      env: fixture.env,
+      shouldRepair: true,
+      nowMs: fixture.nowMs,
+    });
+
+    expect(migrated.warnings).toEqual([]);
+    expect(migrated.changes).toEqual([
+      expect.stringContaining("Converted 1 heartbeat task"),
+      expect.stringContaining("Removed migrated task declarations"),
+    ]);
+    await expect(fs.readFile(heartbeatPath, "utf8")).resolves.toBe(
+      "# Authored guidance\n\nReview alerts with judgment.\n\n# Preserve this section\n",
+    );
+    expect(
+      readCronJobScratchState(fixture.storePath, fixture.monitor.id, { env: fixture.env }).scratch
+        ?.content,
+    ).toBe("operator scratch stays here\n");
+    const jobs = (await loadCronJobsStore(fixture.storePath)).jobs.filter(isHeartbeatTaskCronJob);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.description).toBe("Migrated from legacy heartbeat tasks by openclaw doctor.");
+    await expect(
+      maybeMigrateHeartbeatTasksToCron({
+        cfg: fixture.cfg,
+        env: fixture.env,
+        shouldRepair: true,
+        nowMs: fixture.nowMs + 10_000,
+      }),
+    ).resolves.toEqual({ changes: [], warnings: [] });
+  });
+
+  it("still migrates legacy scratch after a task-stripped file is restored", async () => {
+    const fixture = await createFixture(2_000_000_000_000);
+    const heartbeatPath = await writeHeartbeatFile(fixture, "# Restored authored guidance\n");
+
+    await expect(collectHeartbeatTaskMigrationFindings(fixture.cfg, fixture.env)).resolves.toEqual([
+      expect.objectContaining({ requirement: "heartbeat-tasks-in-scratch", target: "main" }),
+    ]);
+    const result = await maybeMigrateHeartbeatTasksToCron({
+      cfg: fixture.cfg,
+      env: fixture.env,
+      shouldRepair: true,
+      nowMs: fixture.nowMs,
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(result.changes).toEqual([expect.stringContaining("Converted 2 heartbeat tasks")]);
+    await expect(fs.readFile(heartbeatPath, "utf8")).resolves.toBe(
+      "# Restored authored guidance\n",
+    );
+    expect(
+      readCronJobScratchState(fixture.storePath, fixture.monitor.id, { env: fixture.env }).scratch
+        ?.content,
+    ).not.toContain("tasks:");
+  });
+
+  it("does not rewrite a symlinked heartbeat file automatically", async () => {
+    const fixture = await createFixture(2_000_000_000_000, "operator scratch stays here\n");
+    const workspaceDir = resolveAgentWorkspaceDir(fixture.cfg, "main");
+    await fs.mkdir(workspaceDir, { recursive: true });
+    const targetPath = path.join(workspaceDir, "authored-heartbeat.md");
+    const heartbeatPath = path.join(workspaceDir, "HEARTBEAT.md");
+    const content = `# Linked guidance
+tasks:
+  - name: inbox
+    interval: 1h
+    prompt: Check urgent inbox items
+`;
+    await fs.writeFile(targetPath, content, "utf8");
+    await fs.symlink(targetPath, heartbeatPath);
+
+    const result = await maybeMigrateHeartbeatTasksToCron({
+      cfg: fixture.cfg,
+      env: fixture.env,
+      shouldRepair: true,
+      nowMs: fixture.nowMs,
+    });
+
+    expect(result.warnings.join("\n")).toContain("single-link regular file");
+    await expect(fs.readFile(targetPath, "utf8")).resolves.toBe(content);
+    expect((await fs.lstat(heartbeatPath)).isSymbolicLink()).toBe(true);
+    expect(
+      (await loadCronJobsStore(fixture.storePath)).jobs.filter(isHeartbeatTaskCronJob),
+    ).toHaveLength(0);
+  });
+
+  it("creates jobs for every enabled owner before stripping a shared file", async () => {
+    const fixture = await createSharedFileFixture({ nowMs: 2_000_000_000_000 });
+
+    const result = await maybeMigrateHeartbeatTasksToCron({
+      cfg: fixture.cfg,
+      env: fixture.env,
+      shouldRepair: true,
+      nowMs: fixture.nowMs,
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(result.changes.filter((change) => change.startsWith("Converted"))).toHaveLength(2);
+    expect(result.changes.at(-1)).toContain("Removed migrated task declarations");
+    const jobs = (await loadCronJobsStore(fixture.storePath)).jobs.filter(isHeartbeatTaskCronJob);
+    expect(
+      jobs.map((job) => job.agentId).toSorted((left, right) => left.localeCompare(right)),
+    ).toEqual(["main", "ops"]);
+    await expect(fs.readFile(fixture.heartbeatPath, "utf8")).resolves.toBe(
+      "# Shared operations\n\n# Keep this prose\n",
+    );
+  });
+
+  it("retains shared file tasks until a disabled owner is re-enabled", async () => {
+    const fixture = await createSharedFileFixture({
+      nowMs: 2_000_000_000_000,
+      disabledOps: true,
+    });
+    const original = await fs.readFile(fixture.heartbeatPath, "utf8");
+
+    const first = await maybeMigrateHeartbeatTasksToCron({
+      cfg: fixture.cfg,
+      env: fixture.env,
+      shouldRepair: true,
+      nowMs: fixture.nowMs,
+    });
+
+    expect(first.changes).toEqual([expect.stringContaining('agent "main"')]);
+    expect(first.warnings.join("\n")).toContain("another heartbeat owner is disabled");
+    await expect(fs.readFile(fixture.heartbeatPath, "utf8")).resolves.toBe(original);
+    expect(
+      (await loadCronJobsStore(fixture.storePath)).jobs.filter(isHeartbeatTaskCronJob),
+    ).toHaveLength(1);
+
+    fixture.cfg.agents!.list![1]!.heartbeat = { every: "30m" };
+    const second = await maybeMigrateHeartbeatTasksToCron({
+      cfg: fixture.cfg,
+      env: fixture.env,
+      shouldRepair: true,
+      nowMs: fixture.nowMs + 10_000,
+    });
+
+    expect(second.warnings).toEqual([]);
+    expect(second.changes).toEqual([
+      expect.stringContaining('agent "ops"'),
+      expect.stringContaining("Removed migrated task declarations"),
+    ]);
+    expect(
+      (await loadCronJobsStore(fixture.storePath)).jobs.filter(isHeartbeatTaskCronJob),
+    ).toHaveLength(2);
+    await expect(fs.readFile(fixture.heartbeatPath, "utf8")).resolves.not.toContain("tasks:");
+  });
+
+  it("preserves a concurrently recreated heartbeat file after cron commit", async () => {
+    const fixture = await createFixture(2_000_000_000_000, "operator scratch stays here\n");
+    const heartbeatPath = await writeHeartbeatFile(
+      fixture,
+      `# Original
+tasks:
+  - name: inbox
+    interval: 1h
+    prompt: Check urgent inbox items
+`,
+    );
+    const concurrent = "# Concurrent authored replacement\n\nKeep this exactly.\n";
+    const realRename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (oldPath, newPath) => {
+      await realRename(oldPath, newPath);
+      if (
+        oldPath === heartbeatPath &&
+        typeof newPath === "string" &&
+        newPath.includes(".doctor-task-migrating-")
+      ) {
+        await fs.writeFile(heartbeatPath, concurrent, "utf8");
+      }
+    });
+
+    const result = await maybeMigrateHeartbeatTasksToCron({
+      cfg: fixture.cfg,
+      env: fixture.env,
+      shouldRepair: true,
+      nowMs: fixture.nowMs,
+    });
+
+    expect(result.changes).toEqual([expect.stringContaining("Converted 1 heartbeat task")]);
+    expect(result.warnings.join("\n")).toContain("recreated during task migration");
+    await expect(fs.readFile(heartbeatPath, "utf8")).resolves.toBe(concurrent);
+    expect(
+      (await loadCronJobsStore(fixture.storePath)).jobs.filter(isHeartbeatTaskCronJob),
+    ).toHaveLength(1);
   });
 
   it("leaves cron jobs and legacy timestamps untouched when the scratch revision changes", async () => {

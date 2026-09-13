@@ -40,7 +40,7 @@ type MigratedScratch = {
   sourceSha256: string;
 };
 
-type ExistingHeartbeatFile = {
+export type ExistingHeartbeatFile = {
   content: string;
   sha256: string;
 };
@@ -51,10 +51,11 @@ function resolveHeartbeatFileRestorationAgents(cfg: OpenClawConfig) {
   );
 }
 
-async function readExistingHeartbeatFile(
-  workspaceDir: string,
-): Promise<ExistingHeartbeatFile | undefined> {
-  const heartbeatPath = path.join(workspaceDir, DEFAULT_HEARTBEAT_FILENAME);
+export async function readHeartbeatFileAtPath(params: {
+  workspaceDir: string;
+  filePath: string;
+}): Promise<ExistingHeartbeatFile | undefined> {
+  const heartbeatPath = params.filePath;
   let sourceStat;
   try {
     sourceStat = await fs.lstat(heartbeatPath);
@@ -71,7 +72,7 @@ async function readExistingHeartbeatFile(
     throw new Error("HEARTBEAT.md has multiple hard links; refusing automatic reconciliation");
   }
 
-  const workspaceRealPath = await fs.realpath(workspaceDir);
+  const workspaceRealPath = await fs.realpath(params.workspaceDir);
   const sourceRealPath = await fs.realpath(heartbeatPath);
   if (sourceRealPath !== workspaceRealPath && !isPathInside(workspaceRealPath, sourceRealPath)) {
     throw new Error("HEARTBEAT.md symlink target escapes the agent workspace");
@@ -87,6 +88,15 @@ async function readExistingHeartbeatFile(
     throw new Error("HEARTBEAT.md is not valid UTF-8");
   }
   return { content, sha256: hashCronScratchSource(content) };
+}
+
+export async function readExistingHeartbeatFile(
+  workspaceDir: string,
+): Promise<ExistingHeartbeatFile | undefined> {
+  return readHeartbeatFileAtPath({
+    workspaceDir,
+    filePath: path.join(workspaceDir, DEFAULT_HEARTBEAT_FILENAME),
+  });
 }
 
 function scratchMatchesFile(scratch: MigratedScratch, file: ExistingHeartbeatFile): boolean {
