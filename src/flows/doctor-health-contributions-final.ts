@@ -287,15 +287,29 @@ export function resolveFinalDoctorHealthContributions(params: {
       run: runHeartbeatCadenceMigrationHealth,
     }),
     createDoctorHealthContribution({
-      id: "doctor:heartbeat-scratch-migration",
-      label: "Heartbeat scratch migration",
+      id: "doctor:heartbeat-task-cron-migration",
+      label: "Heartbeat task cron migration",
       healthChecks: {
-        description: "Workspace HEARTBEAT.md files must migrate into cron-owned scratch.",
+        description: "Legacy heartbeat task blocks must migrate into automations.",
+        defaultEnabled: true,
+        async detect(ctx) {
+          const { collectHeartbeatTaskMigrationFindings } =
+            await import("../commands/doctor-heartbeat-task-migration.js");
+          return collectHeartbeatTaskMigrationFindings(ctx.cfg, ctx.env);
+        },
+      },
+      run: runHeartbeatTaskMigrationHealth,
+    }),
+    createDoctorHealthContribution({
+      id: "doctor:heartbeat-scratch-migration",
+      label: "Heartbeat file restoration",
+      healthChecks: {
+        description: "Migration-owned heartbeat scratch must return to authored HEARTBEAT.md.",
         defaultEnabled: true,
         async detect(ctx) {
           const { collectHeartbeatScratchMigrationFindings } =
             await import("../commands/doctor-heartbeat-scratch-migration.js");
-          return collectHeartbeatScratchMigrationFindings(ctx.cfg);
+          return collectHeartbeatScratchMigrationFindings(ctx.cfg, ctx.env);
         },
       },
       run: runHeartbeatScratchMigrationHealth,
@@ -313,20 +327,6 @@ export function resolveFinalDoctorHealthContributions(params: {
         },
       },
       run: runToolsMdMigrationHealth,
-    }),
-    createDoctorHealthContribution({
-      id: "doctor:heartbeat-task-cron-migration",
-      label: "Heartbeat task cron migration",
-      healthChecks: {
-        description: "Heartbeat scratch task blocks must migrate into automations.",
-        defaultEnabled: true,
-        async detect(ctx) {
-          const { collectHeartbeatTaskMigrationFindings } =
-            await import("../commands/doctor-heartbeat-task-migration.js");
-          return collectHeartbeatTaskMigrationFindings(ctx.cfg, ctx.env);
-        },
-      },
-      run: runHeartbeatTaskMigrationHealth,
     }),
     createDoctorHealthContribution({
       id: "doctor:shell-completion",

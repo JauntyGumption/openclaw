@@ -1934,16 +1934,16 @@ describe("doctor health contributions", () => {
     expect(mocks.collectHeartbeatCadenceMigrationFindings).toHaveBeenCalledWith(cfg, env);
   });
 
-  it("migrates heartbeat files before converting their task blocks", () => {
+  it("converts legacy task blocks before restoring authored heartbeat files", () => {
     const ids = resolveDoctorHealthContributions().map((entry) => entry.id);
     const cadenceIndex = ids.indexOf("doctor:heartbeat-cadence-migration");
     const scratchIndex = ids.indexOf("doctor:heartbeat-scratch-migration");
     const taskIndex = ids.indexOf("doctor:heartbeat-task-cron-migration");
 
     expect(cadenceIndex).toBeGreaterThan(-1);
-    expect(scratchIndex).toBeGreaterThan(cadenceIndex);
-    expect(scratchIndex).toBeGreaterThan(-1);
-    expect(taskIndex).toBeGreaterThan(scratchIndex);
+    expect(taskIndex).toBeGreaterThan(cadenceIndex);
+    expect(taskIndex).toBeGreaterThan(-1);
+    expect(scratchIndex).toBeGreaterThan(taskIndex);
     expect(taskIndex).toBeLessThan(ids.indexOf("doctor:write-config"));
   });
 
