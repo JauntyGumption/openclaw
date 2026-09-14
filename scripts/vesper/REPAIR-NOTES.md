@@ -4,22 +4,16 @@
 
 Cross-checked the current `vesper-heartbeat-2026.8.2-repair` staging against the earlier source-level design conversation performed on exact `v2026.7.1-2`.
 
-### Important correction before applying the staged system-prompt repair
+### Execution Bias correction
 
 **Keep the upstream `Execution Bias` section.**
 
 The earlier design explicitly classified Execution Bias as useful execution/completion guidance rather than behavioral glass. Its intended role is to push against passivity: act on actionable work, continue until done or genuinely blocked, verify mutable facts, and avoid plan-only completion when tools can act.
 
-The currently staged `scripts/vesper/apply-system-prompt-2026.8.2-repair.mjs` mistakenly contains two replacements that remove the 2026.8.2 Execution Bias default:
+The initial 2026.8.2 reconstruction accidentally staged two replacements that removed Execution Bias. That reconstruction drift has now been corrected:
 
-- `remove upstream execution bias default`
-- `disable upstream execution bias fallback`
-
-Those two replacements should be removed before the staged repair is executed.
-
-Likewise, `scripts/vesper/apply-system-prompt-tests-2026.8.2-repair.mjs` currently creates a Vesper invariant asserting that `## Execution Bias` is absent. That invariant should instead assert that the section remains present.
-
-This is a reconstruction drift, not an intentional change in the Vesper runtime philosophy.
+- `scripts/vesper/apply-system-prompt-2026.8.2-repair.mjs` preserves the upstream Execution Bias implementation and fallback.
+- `scripts/vesper/apply-system-prompt-tests-2026.8.2-repair.mjs` requires `## Execution Bias` to remain present in the Vesper invariant.
 
 ### Confirmed aligned with the historical design
 
@@ -34,12 +28,54 @@ This is a reconstruction drift, not an intentional change in the Vesper runtime 
 - Opening identity: replace `You are a personal assistant running inside OpenClaw.` with descriptive runtime information. Staged.
 - Workspace leash: replace the prompt-only `single global workspace unless explicitly told otherwise` wording with descriptive primary-workspace information; real filesystem policy remains authoritative. Staged.
 - Documentation ontology: distinguish OpenClaw implementation facts from workspace/memory context without reducing the latter to `instructions/user memory`. Staged.
-- Generic subagent pressure: change `Large work: sessions_spawn` into capability information so delegation remains a judgment rather than a size-triggered mandate. Staged.
+- Generic subagent pressure inside the main system prompt: change `Large work: sessions_spawn` into capability information so delegation remains a judgment rather than a size-triggered mandate. Staged.
 - Tool narration: remove silence-by-default style shaping while preserving actual approval mechanics. Staged.
 - External-content handling: retain hardened boundary/sanitization mechanics; simplify only the model-facing warning to provenance/authority language. Staged separately.
 - Completion-event reporting, memory-flush protections, credential handling, approval mechanics, provenance/authentication boundaries, and QMD continuity should remain intact.
 
-### 2026.8.2 adaptation notes
+## Newer-shaping audit: 2026.8.2 additions after the old build-one baseline
+
+A narrower source audit found later model-facing shaping that did not exist in the same form on the old Vesper-patched baseline.
+
+### Delegation default: repaired
+
+Later OpenClaw versions changed the canonical main session so that an unspecified delegation preference resolved to `prefer`. That made a strong coordinator/delegation role implicit: multi-step or slow investigation, coding, shell/browser work, long reads, and waits were routed toward child agents unless configuration explicitly said `suggest`.
+
+Vesper repair policy: delegation remains available, but the runtime does not silently assign Vesper the coordinator role.
+
+Applied on the branch:
+
+- `src/agents/delegation-guidance.ts` now honors explicit per-agent or global `delegationMode`, otherwise defaults to `suggest` for every session, including the canonical main session.
+- Explicit `prefer` remains fully supported.
+- `src/agents/delegation-guidance.test.ts` locks the no-implicit-prefer behavior.
+
+### Promised Work obligation: repaired
+
+Later OpenClaw versions added a `## Promised Work` section that said promising future/background/delegated/continued work creates `follow-through ownership`, required keeping requests/goals/tasks open, and required proactively returning without waiting for the requester.
+
+Vesper repair policy: retain asynchronous honesty and actual completion-path integrity without installing an ownership obligation or mandatory proactive-return temperament.
+
+Applied on the branch:
+
+- `src/agents/promised-work-prompt.ts` now says that if the agent chooses or agrees to continue work beyond the current turn, it should use an available completion/watch path capable of actually returning the result.
+- If no such path exists, stay in the current turn or state the limitation instead of promising later.
+- `running` remains explicitly non-completion.
+- `src/agents/promised-work-prompt.vesper.test.ts` forbids the old ownership, keep-open, and mandatory proactive-return language.
+
+### Newer additions currently classified as keep
+
+- Completion-event reporting: pushes against silent/furniture behavior by requiring completion events to be delivered in normal voice.
+- Watched Sessions: expands read-only awareness of ambiently watched sessions.
+- Standing Intents: expands durable event-triggered persistence; constraints protect the semantics of already-created intents rather than suppressing initiative.
+- Control UI Session Companion: webchat-specific operational guidance.
+- Collapsible Details: presentation guidance only.
+- Provider messaging routing, credential handling, approval paths, and similar controls: capability/security boundaries, not behavioral-glass targets.
+
+### Newer addition still worth later review
+
+Automation promotion guidance is opinionated product behavior: repeated requests can trigger an offer to turn the work into a routine. It is lower-impact than delegation-default and Promised Work shaping, so it was not changed in this pass.
+
+## 2026.8.2 adaptation notes
 
 The newer tree contains machinery that did not exist in exactly the same form on `v2026.7.1-2`, including heartbeat automation/scratch context and richer memory corpus/result contracts. The repair should preserve those mechanics while removing behavioral suppression around them rather than replaying the old patch literally.
 
