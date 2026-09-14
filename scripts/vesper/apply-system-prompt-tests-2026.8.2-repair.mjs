@@ -192,7 +192,7 @@ describe("Vesper system prompt invariants", () => {
     expect(prompt).not.toContain("MEMORY.md: durable non-profile facts and decisions");
     expect(prompt).not.toContain("USER.md: durable user preferences and profile directives");
     expect(prompt).not.toContain("Group/channel:");
-    expect(prompt).not.toContain("## Execution Bias");
+    expect(prompt).toContain("## Execution Bias");
     expect(prompt).toContain(
       "Tool-call narration is available when it helps preserve context or communicate progress.",
     );
