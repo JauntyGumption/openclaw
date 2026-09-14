@@ -6,6 +6,10 @@ import type { OpenClawConfig } from "../../config/config.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
 
 describe("sandbox config", () => {
+  it("keeps host execution as the default when sandboxing is not configured", () => {
+    expect(resolveSandboxConfigForAgent({}, "main").mode).toBe("off");
+  });
+
   it("tracks whether tmpfs came from defaults or explicit config", () => {
     expect(resolveSandboxConfigForAgent().dockerTmpfsSource).toBe("default");
     expect(
