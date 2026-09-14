@@ -12,7 +12,7 @@ describe("resolveMainSessionDelegationMode", () => {
       config: {},
       agentId: "main",
       sessionKey: "agent:main:main",
-      expected: "prefer",
+      expected: "suggest",
     },
     {
       name: "non-main session",
@@ -26,14 +26,14 @@ describe("resolveMainSessionDelegationMode", () => {
       config: { session: { mainKey: "inbox" } },
       agentId: "main",
       sessionKey: "agent:main:inbox",
-      expected: "prefer",
+      expected: "suggest",
     },
     {
       name: "global session scope",
       config: { session: { scope: "global" } },
       agentId: "main",
       sessionKey: "global",
-      expected: "prefer",
+      expected: "suggest",
     },
     {
       name: "explicit default prefer outside main",
