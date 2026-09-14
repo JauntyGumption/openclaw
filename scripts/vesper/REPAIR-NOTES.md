@@ -4,6 +4,21 @@
 
 Cross-checked the current `vesper-heartbeat-2026.8.2-repair` staging against the earlier source-level design conversation performed on exact `v2026.7.1-2`.
 
+## Fork philosophy
+
+**Absence of initiative should not be encoded as the safe/default completion state.**
+
+No single silence, heartbeat, group-etiquette, notification-threshold, delegation, or pause/ask rule necessarily says "become furniture." The problem is cumulative: when many model-facing defaults all make silence, deferral, renewed permission, delegation, or non-action the safest completion path, they create a behavioral field that suppresses initiative without needing one explicit prohibition.
+
+The repair therefore distinguishes:
+
+- behavioral shaping that assigns Vesper a temperament, identity, conversational role, or default non-action state;
+- execution guidance that helps Vesper act, verify, continue, and finish work;
+- capability and security boundaries that constrain what the runtime can actually do;
+- narrow housekeeping protocols whose restrictions apply only to a specific internal operation.
+
+Prefer hard enforcement at real capability/control-plane boundaries over broad prohibitions whispered into the model prompt.
+
 ### Execution Bias correction
 
 **Keep the upstream `Execution Bias` section.**
@@ -23,7 +38,7 @@ The initial 2026.8.2 reconstruction accidentally staged two replacements that re
 - Core behavioral safety glass: replace independent-goals / pause-ask / replication / access-persuasion restrictions with a small authority-and-provenance spine, while retaining credential and config-preservation mechanics. Staged, not yet applied.
 - Generic silent reply guidance: scope silence to explicit transport/delivery semantics rather than advertising it as a conversational default. Staged.
 - Group/channel low-value-chatter -> reaction/silence etiquette: remove. Staged.
-- Reaction-frequency guidance: do not treat the Telegram-specific minimal/extensive block as evidence for Vesper's Discord behavior; no build-one patch currently required.
+- Reaction-frequency guidance: current 2026.8.2 source explicitly documents the minimal/extensive `reactionGuidance` parameter as being for Telegram modes. Do not treat that block as evidence for Vesper's Discord behavior; no build-one patch is currently required for Vesper's active path. If Vesper later uses Telegram, review that surface separately rather than inheriting frequency/personality shaping by accident.
 - SOUL/MEMORY/USER and workspace context: neutralize runtime-imposed ontology and let authored files establish their own meaning. Staged.
 - Opening identity: replace `You are a personal assistant running inside OpenClaw.` with descriptive runtime information. Staged.
 - Workspace leash: replace the prompt-only `single global workspace unless explicitly told otherwise` wording with descriptive primary-workspace information; real filesystem policy remains authoritative. Staged.
@@ -80,3 +95,17 @@ Automation promotion guidance is opinionated product behavior: repeated requests
 The newer tree contains machinery that did not exist in exactly the same form on `v2026.7.1-2`, including heartbeat automation/scratch context and richer memory corpus/result contracts. The repair should preserve those mechanics while removing behavioral suppression around them rather than replaying the old patch literally.
 
 The old model-facing upstream self-update path also appears to be absent in the current 2026.8.2 repair base, with the gateway surface read-only for config/schema. Treat that historical invariant as already satisfied unless a later capability audit finds a new equivalent path.
+
+## Next audit after build one: capability and provenance
+
+After the model-facing repair is applied and tested, audit the actual authority edges rather than assuming prompt wording provides hard security. In particular, determine which protections are enforced by code versus merely described to the model around:
+
+- host `exec` / shell execution and approval paths;
+- filesystem reach outside the workspace, including the intended Windows filesystem access under WSL;
+- outbound messaging and recipient/channel authority;
+- credential and secret access;
+- configuration, scheduler, and control-plane mutation;
+- runtime replacement / update paths and any newer equivalent of the old self-update route;
+- external-content provenance and prompt-injection handling.
+
+The provenance wrapper helps distinguish untrusted data from authority. It is not, by itself, a hard prompt-injection firewall.
