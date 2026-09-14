@@ -91,7 +91,7 @@ export const MEMORY_SEARCH_TOOL_CONTRACT = {
   name: "memory_search",
   parameters: MemorySearchSchema,
   describe: ({ search }: MemorySourceContract) =>
-    `Mandatory recall step: semantically search ${search} before answering questions about prior work, decisions, dates, people, preferences, or todos. Optional \`corpus=wiki\` or \`corpus=all\` also searches registered compiled-wiki supplements. \`corpus=memory\` restricts hits to indexed memory files (excludes session transcript chunks from ranking). \`corpus=sessions\` restricts hits to the session corpus under the same visibility rules as session history tools. ${SEARCH_CORPUS_OUTCOME_GUIDANCE} If response has disabled=true or stale=true, tell the user and include the warning/action guidance.`,
+    `Semantically search ${search} for durable context, prior work, decisions, dates, people, preferences, todos, and other continuity-relevant material. Optional \`corpus=wiki\` or \`corpus=all\` also searches registered compiled-wiki supplements. \`corpus=memory\` restricts hits to indexed memory files (excludes session transcript chunks from ranking). \`corpus=sessions\` restricts hits to the session corpus under the same visibility rules as session history tools. ${SEARCH_CORPUS_OUTCOME_GUIDANCE} If response has disabled=true or stale=true, tell the user and include the warning/action guidance.`,
 } as const;
 
 export const MEMORY_GET_TOOL_CONTRACT = {
@@ -117,16 +117,17 @@ export function buildMemoryPromptSection({
     return [];
   }
 
-  const guidance = hasMemorySearch
-    ? `Before answering anything about prior work, decisions, dates, people, preferences, or todos: run memory_search on ${sources.search}${
-        hasMemoryGet ? "; then use memory_get to pull only the needed lines" : ""
-      }. ${SEARCH_CORPUS_OUTCOME_GUIDANCE}${
-        hasMemoryGet ? ` For memory_get, ${GET_READ_OUTCOME_GUIDANCE}` : ""
-      } If low confidence after search, say you checked.`
-    : `Before answering anything about prior work, decisions, dates, people, preferences, or todos that point to a specific source in ${sources.files}: run memory_get to pull only the needed lines. ${GET_READ_OUTCOME_GUIDANCE} ${SEARCH_CORPUS_OUTCOME_GUIDANCE} If low confidence after reading, say you checked.`;
+  let guidance: string;
+  if (hasMemorySearch && hasMemoryGet) {
+    guidance = `memory_search searches ${sources.search}; memory_get retrieves exact excerpts from ${sources.files}. Use them whenever context beyond the current turn may help with continuity, orientation, understanding, recall, or action. ${SEARCH_CORPUS_OUTCOME_GUIDANCE} For memory_get, ${GET_READ_OUTCOME_GUIDANCE}`;
+  } else if (hasMemorySearch) {
+    guidance = `memory_search searches ${sources.search}. Use it whenever context beyond the current turn may help with continuity, orientation, understanding, recall, or action. ${SEARCH_CORPUS_OUTCOME_GUIDANCE}`;
+  } else {
+    guidance = `memory_get retrieves exact excerpts from ${sources.files}. Use it whenever known memory context beyond the current turn may help with continuity, orientation, understanding, recall, or action. ${GET_READ_OUTCOME_GUIDANCE} ${SEARCH_CORPUS_OUTCOME_GUIDANCE}`;
+  }
   const citationGuidance =
     citationsMode === "off"
-      ? "Citations are disabled: do not mention file paths or line numbers in replies unless the user explicitly asks."
+      ? "Memory citation paths and line numbers are omitted from replies unless the user explicitly asks for them."
       : "Citations: include Source: <path#line> when it helps the user verify memory snippets.";
-  return ["## Memory Recall", guidance, citationGuidance, ""];
+  return ["## Memory", guidance, citationGuidance, ""];
 }
