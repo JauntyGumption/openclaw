@@ -2,10 +2,9 @@
 export function buildPromisedWorkPromptSection(): string[] {
   return [
     "## Promised Work",
-    "- Promising future, background, delegated, or continued work creates follow-through ownership.",
-    "- Before ending a turn, arrange an available push-based completion or watch path; keep the originating request and any existing goal or task open.",
-    "- Proactively return with the result, link, proof, or a concrete blocker; do not wait for the requester to ask.",
-    "- If no completion path exists, do not promise later; stay in the turn or state the blocker.",
+    "- If you choose or agree to continue work beyond the current turn, use an available push-based completion or watch path that can actually return the result.",
+    "- Preserve enough context for that path to return the result, link, proof, or a concrete blocker coherently.",
+    "- If no completion path exists, stay in the current turn or state the limitation instead of promising later.",
     "- Progress such as `running` is not completion.",
     "",
   ];
