@@ -16,11 +16,7 @@ import type {
 
 /** Workspace bootstrap-file injection policy for agent system prompts. */
 export type AgentContextInjection = "always" | "continuation-skip" | "never";
-/**
- * Optional bootstrap files that setup can skip while still creating required
- * agent files. "HEARTBEAT.md" stays accepted as legacy config input even
- * though workspace setup no longer writes it.
- */
+/** Optional bootstrap files that workspace setup can skip writing. */
 export type OptionalBootstrapFileName = "SOUL.md" | "USER.md" | "HEARTBEAT.md" | "IDENTITY.md";
 /** Embedded runner behavior contract used by strict-agentic provider flows. */
 export type EmbeddedAgentExecutionContract = "default" | "strict-agentic";
@@ -171,9 +167,9 @@ export type AgentDefaultsConfig = {
   skipBootstrap?: boolean;
   /**
    * List of optional bootstrap filenames to skip writing to the workspace root.
-   * Applies to: SOUL.md, USER.md, IDENTITY.md ("HEARTBEAT.md" is accepted but a no-op).
+   * Applies to: SOUL.md, USER.md, IDENTITY.md, HEARTBEAT.md.
    * Required workspace setup such as AGENTS.md still runs.
-   * Example: ["SOUL.md", "USER.md", "IDENTITY.md"]
+   * Example: ["SOUL.md", "USER.md", "IDENTITY.md", "HEARTBEAT.md"]
    */
   skipOptionalBootstrapFiles?: OptionalBootstrapFileName[];
   /**
@@ -313,8 +309,8 @@ export type AgentDefaultsConfig = {
     timeoutSeconds?: number;
     /**
      * If true, run heartbeat turns with lightweight bootstrap context.
-     * Lightweight mode skips workspace bootstrap files; monitor scratch is
-     * injected by the heartbeat runner either way.
+     * Lightweight mode keeps authored HEARTBEAT.md while skipping other workspace
+     * bootstrap files; monitor scratch is injected by the heartbeat runner either way.
      */
     lightContext?: boolean;
     /**

@@ -3133,11 +3133,6 @@ describe("agents.files.list", () => {
     expect(names).toContain("BOOTSTRAP.md");
   });
 
-  it("does not expose retired HEARTBEAT.md workspace files", async () => {
-    const names = await listAgentFileNames();
-    expect(names).not.toContain("HEARTBEAT.md");
-  });
-
   // Pins the derivation: a private copy of this list in the gateway is what let a
   // retired file linger in the Control UI as a permanently-missing tab.
   it("lists the canonical workspace filenames except IDENTITY.md", async () => {
@@ -3170,20 +3165,21 @@ describe("agents.files.list", () => {
     expectRespondOk(respond, { ok: true });
   });
 
-  it("rejects writes to retired HEARTBEAT.md workspace files", async () => {
+  it("accepts direct HEARTBEAT.md writes as authored workspace guidance", async () => {
     const { respond, promise } = makeCall("agents.files.set", {
       agentId: "main",
       name: "HEARTBEAT.md",
-      content: "legacy checklist",
+      content: "Stay oriented toward unfinished shared work.\n",
     });
     await promise;
 
-    expectRecordFields(expectRespondErrorContaining(respond, "unsupported file"), {
-      code: "INVALID_REQUEST",
-      message: 'unsupported file "HEARTBEAT.md"',
-    });
-    expect(mocks.fsMkdir).not.toHaveBeenCalled();
-    expect(mocks.rootWrite).not.toHaveBeenCalled();
+    expectRespondOk(respond, { ok: true });
+    expect(mocks.rootWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relativePath: "HEARTBEAT.md",
+        data: "Stay oriented toward unfinished shared work.\n",
+      }),
+    );
   });
 
   it("hides BOOTSTRAP.md when workspace setup is complete", async () => {
@@ -3208,8 +3204,8 @@ describe("agents.files.list", () => {
   });
 
   // The editor renders a missing-file fault only when absence is unexpected; the
-  // optional profile files and MEMORY.md are normal to be absent and are offered
-  // for creation instead.
+  // optional authored workspace files and MEMORY.md are normal to be absent and
+  // are offered for creation instead.
   it("marks normally-absent bootstrap files as expected", async () => {
     const rootStat = vi.fn(async () => {
       throw createEnoentError();
@@ -3227,7 +3223,7 @@ describe("agents.files.list", () => {
       .filter((file) => file.expectedAbsent === true)
       .map((file) => file.name);
     expect(files.every((file) => file.missing)).toBe(true);
-    expect(expectedAbsentNames).toStrictEqual(["SOUL.md", "USER.md", "MEMORY.md"]);
+    expect(expectedAbsentNames).toStrictEqual(["SOUL.md", "USER.md", "HEARTBEAT.md", "MEMORY.md"]);
   });
 
   it("omits expectedAbsent for files that exist", async () => {
