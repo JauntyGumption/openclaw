@@ -90,6 +90,26 @@ Applied on the branch:
 
 Automation promotion guidance is opinionated product behavior: repeated requests can trigger an offer to turn the work into a routine. It is lower-impact than delegation-default and Promised Work shaping, so it was not changed in this pass.
 
+## Host filesystem compatibility requirement
+
+Vesper's trusted primary runtime intentionally needs host filesystem reach from NixOS/WSL into mounted Windows filesystems for work such as deep Talend inspection and modification. That capability is load-bearing and should be preserved unless explicitly changed by the operator.
+
+Current 2026.8.2 behavior is compatible with that requirement:
+
+- `resolveSandboxConfigForAgent` still defaults `sandbox.mode` to `"off"`.
+- `tools.exec.host` defaults to `"auto"`; with no active sandbox, `auto` resolves to the Gateway host.
+- Gateway `exec` is a normal mutating shell surface and may read/write anywhere the host process itself can access, including WSL-mounted Windows paths such as `/mnt/c/...` when ordinary OS permissions permit it.
+- `tools.fs.workspaceOnly` defaults to `false`, preserving unrestricted `read`/`write`/`edit` tool paths unless config or policy explicitly narrows them. Existing `src/agents/tool-fs-policy.test.ts` already locks that default.
+- `tools.exec.applyPatch.workspaceOnly` defaults to `true`, but that was already true in the old `v2026.7.1-2` baseline and is not an upgrade regression. Host `exec` and unrestricted filesystem tools remain available independently.
+
+A new security feature appeared in 2026.8.1: named operator roles may declare `sandbox: "required"`. A creator-role requirement overrides agent sandbox mode, cannot be escaped through elevated execution or host overrides, and caps shared workspace access to read-only. The default role policy is `inherit`, and omitting named roles leaves solo/shared-secret behavior unchanged. This feature should be retained for genuinely sandboxed guest roles, but Vesper's trusted primary session must not be assigned a sandbox-required creator role.
+
+Regression coverage added on the repair branch:
+
+- `src/agents/sandbox/config.test.ts` now explicitly requires the unconfigured/default agent sandbox mode to remain `"off"`.
+
+When validating the installed runtime, inspect effective settings rather than assuming config intent. Useful checks include `openclaw sandbox explain`, `openclaw exec-policy show`, and the effective agent/tool configuration. For the Vesper session, confirm no creator-role sandbox requirement is stamped onto the session and that the selected exec host resolves to Gateway.
+
 ## 2026.8.2 adaptation notes
 
 The newer tree contains machinery that did not exist in exactly the same form on `v2026.7.1-2`, including heartbeat automation/scratch context and richer memory corpus/result contracts. The repair should preserve those mechanics while removing behavioral suppression around them rather than replaying the old patch literally.
