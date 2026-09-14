@@ -4,14 +4,13 @@ import { escapeRegExp } from "../shared/regexp.js";
 import { HEARTBEAT_TOKEN, SILENT_REPLY_TOKEN, isSilentReplyPayloadText } from "./tokens.js";
 
 // Default heartbeat prompt (used when config.agents.defaults.heartbeat.prompt is unset).
-// Keep it tight and avoid encouraging the model to invent/rehash "open loops" from prior chat context.
 const HEARTBEAT_CRON_TASK_GUIDANCE =
   "Recurring tasks are automations; create or change their schedules with the automations tool, not heartbeat scratch.";
-const HEARTBEAT_CONTEXT_PROMPT = `Follow HEARTBEAT.md standing guidance and heartbeat monitor scratch when provided. ${HEARTBEAT_CRON_TASK_GUIDANCE} Do not infer or repeat old tasks from prior chats.`;
+const HEARTBEAT_CONTEXT_PROMPT = `Use HEARTBEAT.md standing guidance and heartbeat monitor scratch as the current heartbeat context when provided. ${HEARTBEAT_CRON_TASK_GUIDANCE}`;
 /** Default prompt for heartbeat turns when config does not override it. */
-export const HEARTBEAT_PROMPT = `${HEARTBEAT_CONTEXT_PROMPT} If nothing needs attention, reply ${SILENT_REPLY_TOKEN}.`;
+export const HEARTBEAT_PROMPT = `${HEARTBEAT_CONTEXT_PROMPT} Reply ${SILENT_REPLY_TOKEN} when you choose not to send a user-visible message.`;
 export const HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS =
-  "Use heartbeat_respond to report the wake outcome. Set notify=false when nothing needs the user's attention. Set notify=true with notificationText only when the user should be interrupted.";
+  "Use heartbeat_respond to report the wake outcome. Set notify=true with notificationText when you choose to send a user-visible message; set notify=false when you choose not to.";
 export const HEARTBEAT_RESPONSE_TOOL_PROMPT = `${HEARTBEAT_CONTEXT_PROMPT} ${HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS}`;
 export const HEARTBEAT_TRANSCRIPT_PROMPT = "[OpenClaw heartbeat poll]";
 export const DEFAULT_HEARTBEAT_EVERY = "30m";
