@@ -119,11 +119,14 @@ By default, OpenClaw injects a fixed set of workspace files (if present):
 - `SOUL.md`
 - `IDENTITY.md`
 - `USER.md`
+- `HEARTBEAT.md` (optional standing orientation)
 - `BOOTSTRAP.md` (first-run only)
 
 Large files are truncated per-file using `agents.defaults.bootstrapMaxChars` (default `20000` chars). OpenClaw also enforces a total bootstrap injection cap across files with `agents.defaults.bootstrapTotalMaxChars` (default `60000` chars). `/context` shows **raw vs injected** sizes and whether truncation happened.
 
 When truncation occurs, the runtime injects a concise in-prompt notice under Project Context saying some bootstrap files were truncated; per-file names and sizes stay in `/context` and other diagnostics. This notice is built in and not configurable.
+
+`HEARTBEAT.md` is ordinary authored workspace context, despite its name: it is not a scheduler. Heartbeat monitor scratch is a separate mutable context surface appended only to heartbeat turns. With `agents.*.heartbeat.lightContext: true`, heartbeat runs retain `HEARTBEAT.md` while omitting the other bootstrap files; non-heartbeat lightweight automation turns omit bootstrap context entirely. See [Heartbeat](/gateway/heartbeat).
 
 ## Skills: injected vs loaded on-demand
 

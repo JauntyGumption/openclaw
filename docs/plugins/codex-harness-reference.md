@@ -980,8 +980,9 @@ Codex harness forwards the other bootstrap files as developer instructions:
 - The compact loaded OpenClaw skills list is also forwarded as turn-scoped
   collaboration developer instructions, so native Codex subagents do not
   inherit it either.
-- Heartbeat turns receive generic initiative guidance through collaboration
-  mode. Monitor cron scratch is appended to the heartbeat prompt instead of
+- Authored `HEARTBEAT.md` remains bounded turn context for ordinary and
+  heartbeat turns. Native Codex subagents do not inherit it. Monitor cron
+  scratch stays separate and is appended to the heartbeat prompt instead of
   injected as workspace context.
 - `MEMORY.md` content from the configured agent workspace is not pasted into
   native Codex turn input when memory tools are available for that

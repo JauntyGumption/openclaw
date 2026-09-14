@@ -74,6 +74,9 @@ Standard files OpenClaw expects inside the workspace:
   <Accordion title="USER.md - directive-based user model (optional)">
     Stable preferences, communication style, relationships, and active-project context. Write entries as dated active or superseded directives. Loaded every session with a separate 4,000-character budget. See [User model](/concepts/user-model).
   </Accordion>
+  <Accordion title="HEARTBEAT.md - standing orientation (optional)">
+    Concise authored guidance that keeps the agent oriented across ordinary and heartbeat turns. It is workspace context, not a scheduler; recurring schedules belong to [Automations](/automation/cron-jobs), while mutable heartbeat-only operational notes belong in [monitor scratch](/gateway/heartbeat#monitor-scratch-optional).
+  </Accordion>
   <Accordion title="IDENTITY.md - name, vibe, emoji">
     The agent's name, vibe, and emoji. Created/updated during the bootstrap ritual.
   </Accordion>
@@ -98,7 +101,7 @@ Standard files OpenClaw expects inside the workspace:
 </AccordionGroup>
 
 <Note>
-If a required bootstrap file is missing, OpenClaw injects a "missing file" marker into the session and continues. Optional `USER.md` and `MEMORY.md` files are omitted when absent. Large bootstrap files are truncated when injected; adjust general limits with `agents.defaults.bootstrapMaxChars` (default: `20000`) and `agents.defaults.bootstrapTotalMaxChars` (default: `60000`). `USER.md` keeps its separate 4,000-character cap. `openclaw setup` can recreate missing defaults without overwriting existing files.
+If a required bootstrap file is missing, OpenClaw injects a "missing file" marker into the session and continues. Optional `USER.md`, `HEARTBEAT.md`, and `MEMORY.md` files are omitted when absent. Large bootstrap files are truncated when injected; adjust general limits with `agents.defaults.bootstrapMaxChars` (default: `20000`) and `agents.defaults.bootstrapTotalMaxChars` (default: `60000`). `USER.md` keeps its separate 4,000-character cap. `openclaw setup` can recreate missing defaults without overwriting existing files.
 </Note>
 
 ## What is NOT in the workspace
@@ -135,7 +138,7 @@ Run these steps on the machine where the Gateway runs (that is where the workspa
     ```bash
     cd ~/.openclaw/workspace
     git init
-    git add AGENTS.md SOUL.md IDENTITY.md USER.md memory/
+    git add AGENTS.md SOUL.md IDENTITY.md USER.md HEARTBEAT.md memory/
     git commit -m "Add agent workspace"
     ```
 
@@ -233,7 +236,7 @@ Suggested `.gitignore` starter:
 
 ## Related
 
-- [Heartbeat](/gateway/heartbeat) - heartbeat monitors and cron scratch
+- [Heartbeat](/gateway/heartbeat) - authored standing orientation, monitor scratch, and scheduling boundaries
 - [Sandboxing](/gateway/sandboxing) - workspace access in sandboxed environments
 - [Session](/concepts/session) - session storage paths
 - [Standing orders](/automation/standing-orders) - persistent instructions in workspace files

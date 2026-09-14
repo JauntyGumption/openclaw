@@ -87,11 +87,11 @@ Recurring top-of-hour expressions (minute `0` with a wildcard hour field) are au
 
 ### Heartbeat task migration
 
-Older heartbeat scratch supported a structured `tasks:` block. Run `openclaw doctor --fix` after upgrading to convert each entry into an ordinary editable main-session automation job. Doctor preserves the interval and previous last-run timing, creates the jobs before removing the block, and safely converges the same declaration keys on rerun.
+Older `HEARTBEAT.md` files and heartbeat scratch supported a structured `tasks:` block. Run `openclaw doctor --fix` after upgrading to convert each valid entry into an ordinary editable main-session automation job. Doctor preserves the interval and previous last-run timing, creates the jobs before removing only the converted declarations, and safely converges the same declaration keys on rerun. Authored prose remains in `HEARTBEAT.md`; operator scratch prose remains scratch.
 
 These migrated jobs carry public `systemEvent` payloads, so `openclaw automations list`, `get`, `edit`, and `remove` plus the `automations` agent tool manage them like other jobs (the tool still accepts its legacy `cron` name as a compatibility alias). Their execution uses the guarded heartbeat task wake: active hours, minimum spacing, flood control, and busy retries still apply, while the scheduler owns each task's independent cadence. Jobs due in the same coalescing window can share one heartbeat turn. A scheduled occurrence outside heartbeat active hours is skipped and retried at the job's next occurrence.
 
-Heartbeat scratch is now monitor prose only. Runtime heartbeats do not parse `tasks:` text as schedules; create new recurring work as automations.
+`HEARTBEAT.md` and heartbeat scratch are context, not schedulers. Runtime heartbeats do not parse `tasks:` text as schedules; create new recurring work as automations. See [Heartbeat](/gateway/heartbeat) for the standing-orientation and mutable-scratch distinction.
 
 ### Stream sources
 

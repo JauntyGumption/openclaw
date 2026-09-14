@@ -60,7 +60,7 @@ and troubleshooting see the main [FAQ](/help/faq).
     | `empty-heartbeat-file` | Heartbeat monitor scratch exists but only has blank, comment, header, fence, or empty-checklist scaffolding |
     | `alerts-disabled` | All heartbeat visibility is off (`showOk`, `showAlerts`, and `useIndicator` all disabled) |
 
-    Older heartbeat `tasks:` blocks migrate to independently scheduled cron jobs with `openclaw doctor --fix`.
+    Older `tasks:` blocks in `HEARTBEAT.md` or monitor scratch migrate to independently scheduled automation jobs with `openclaw doctor --fix`. Doctor preserves surrounding authored file or scratch prose.
 
     Docs: [Heartbeat](/gateway/heartbeat), [Automation](/automation).
 

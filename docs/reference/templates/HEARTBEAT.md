@@ -7,7 +7,7 @@ read_when:
 
 # HEARTBEAT.md - Standing Orientation
 
-<!-- Keep this file empty (or with only comments/headings) to skip scheduled heartbeat model calls. -->
+<!-- Leave this file empty when no authored standing orientation is needed. -->
 
 # Add concise standing guidance below when the agent should remain oriented toward something across ordinary and scheduled turns.
 
