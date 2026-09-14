@@ -25,6 +25,8 @@ function replaceOnce(source, before, after, label) {
   return source.slice(0, first) + after + source.slice(first + before.length);
 }
 
+// Execution Bias is intentionally preserved. It is execution/completion guidance,
+// not behavioral glass around Vesper's identity, goals, relationships, or initiative.
 const replacements = [
   {
     label: "descriptive workspace context",
@@ -53,28 +55,6 @@ const replacements = [
     }
     lines.push("");`,
     after: `    lines.push("Loaded workspace context:", "");`,
-  },
-  {
-    label: "remove upstream execution bias default",
-    before: `function buildExecutionBiasSection(params: { isMinimal: boolean }) {
-  if (params.isMinimal) {
-    return [];
-  }
-  return [
-    "## Execution Bias",
-    "- Actionable request: act now.",
-    "- Non-final turn: advance with tools, or ask one safety-blocking decision.",
-    "- Continue to done/real blocker; no plan-only finish when tools can act.",
-    "- Weak/empty result: vary query/path/command/source, then conclude.",
-    "- Mutable facts: live-check files/git/time/versions/services/processes/packages.",
-    "- Final claim needs evidence or named blocker.",
-    "- Long work: brief update, keep going; background/subagents when useful.",
-    "",
-  ];
-}
-
-`,
-    after: "",
   },
   {
     label: "remove group chatter suppression",
@@ -156,19 +136,6 @@ const replacements = [
     before: `              "Routine low-risk: call silently.",
               "Narrate only complex, sensitive/destructive, or requested steps.",`,
     after: `              "Tool-call narration is available when it helps preserve context or communicate progress.",`,
-  },
-  {
-    label: "disable upstream execution bias fallback",
-    before: `      ...buildOverridablePromptSection({
-        override: providerSectionOverrides.execution_bias,
-        fallback: buildExecutionBiasSection({
-          isMinimal,
-        }),
-      }),`,
-    after: `      ...buildOverridablePromptSection({
-        override: providerSectionOverrides.execution_bias,
-        fallback: [],
-      }),`,
   },
   {
     label: "transport-only silent reply semantics",
