@@ -1,7 +1,5 @@
-import { resolveCanonicalMainSessionKey } from "../config/sessions/main-session-key.js";
 import type { SubagentDelegationMode } from "../config/types.agent-defaults.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { parseCronRunScopeSuffix } from "../sessions/session-key-utils.js";
 import { resolveAgentConfig } from "./agent-scope.js";
 
 export function resolveMainSessionDelegationMode(params: {
@@ -9,28 +7,14 @@ export function resolveMainSessionDelegationMode(params: {
   agentId?: string;
   sessionKey?: string;
 }): SubagentDelegationMode {
-  const { config, agentId, sessionKey } = params;
+  const { config, agentId } = params;
   const agentSubagents =
     config && agentId ? resolveAgentConfig(config, agentId)?.subagents : undefined;
-  const configuredMode =
-    agentSubagents?.delegationMode ?? config?.agents?.defaults?.subagents?.delegationMode;
-  if (configuredMode) {
-    return configuredMode;
-  }
-  const baseSessionKey = parseCronRunScopeSuffix(sessionKey).baseSessionKey;
-  if (
-    agentId !== undefined &&
-    baseSessionKey !== undefined &&
-    baseSessionKey ===
-      resolveCanonicalMainSessionKey({
-        agentId,
-        mainKey: config?.session?.mainKey,
-        sessionScope: config?.session?.scope,
-      })
-  ) {
-    return "prefer";
-  }
-  return "suggest";
+  return (
+    agentSubagents?.delegationMode ??
+    config?.agents?.defaults?.subagents?.delegationMode ??
+    "suggest"
+  );
 }
 
 export function buildDelegationGuidanceSection(params: {
