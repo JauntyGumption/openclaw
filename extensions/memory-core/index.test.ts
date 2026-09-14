@@ -120,15 +120,17 @@ describe("buildPromptSection", () => {
     ).toStrictEqual([]);
   });
 
-  it("describes the two-step flow when both memory tools are available", () => {
+  it("describes both memory tools without making recall mandatory", () => {
     const result = buildMemoryPromptSection({
       availableTools: new Set(["memory_search", "memory_get"]),
       sources: promptSources,
     });
-    expect(result[0]).toBe("## Memory Recall");
-    expect(result[1]).toContain("run memory_search");
-    expect(result[1]).toContain("then use memory_get");
+    expect(result[0]).toBe("## Memory");
+    expect(result[1]).toContain("memory_search searches");
+    expect(result[1]).toContain("memory_get retrieves exact excerpts");
     expect(result[1]).toContain("indexed session transcripts");
+    expect(result[1]).toContain("Use them whenever context beyond the current turn may help");
+    expect(result[1]).not.toContain("Before answering anything");
     expect(result).toContain(
       "Citations: include Source: <path#line> when it helps the user verify memory snippets.",
     );
@@ -140,10 +142,10 @@ describe("buildPromptSection", () => {
       availableTools: new Set(["memory_search"]),
       sources: promptSources,
     });
-    expect(result[0]).toBe("## Memory Recall");
-    expect(result[1]).toContain("run memory_search");
+    expect(result[0]).toBe("## Memory");
+    expect(result[1]).toContain("memory_search searches");
     expect(result[1]).toContain("indexed session transcripts");
-    expect(result[1]).not.toContain("then use memory_get");
+    expect(result[1]).not.toContain("memory_get retrieves");
   });
 
   it("limits the guidance to memory_get when only get is available", () => {
@@ -151,19 +153,19 @@ describe("buildPromptSection", () => {
       availableTools: new Set(["memory_get"]),
       sources: promptSources,
     });
-    expect(result[0]).toBe("## Memory Recall");
-    expect(result[1]).toContain("run memory_get");
-    expect(result[1]).not.toContain("run memory_search");
+    expect(result[0]).toBe("## Memory");
+    expect(result[1]).toContain("memory_get retrieves exact excerpts");
+    expect(result[1]).not.toContain("memory_search searches");
   });
 
-  it("includes citations-off instruction when citationsMode is off", () => {
+  it("includes descriptive citations-off guidance when citationsMode is off", () => {
     const result = buildMemoryPromptSection({
       availableTools: new Set(["memory_search"]),
       citationsMode: "off",
       sources: promptSources,
     });
     expect(result).toContain(
-      "Citations are disabled: do not mention file paths or line numbers in replies unless the user explicitly asks.",
+      "Memory citation paths and line numbers are omitted from replies unless the user explicitly asks for them.",
     );
   });
 
@@ -219,6 +221,8 @@ describe("buildPromptSection", () => {
     );
     expect(prompt.includes("indexed session transcripts")).toBe(sourceCase.sessions);
     expect(lazy.get.description).not.toContain("indexed session transcripts");
+    expect(lazy.search.description).not.toContain("Mandatory recall step");
+    expect(prompt).not.toContain("Before answering anything");
     expect(lazy.search.description).toContain("Corpus outcomes cover each requested corpus");
     expect(lazy.search.description).toContain("results are partial");
     expect(lazy.get.description).toContain("status=ok");
