@@ -1,96 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.js";
-import { appendIncognitoSystemPrompt } from "./incognito-system-prompt.js";
+import { describe, expect, it } from "vitest";
 import { appendProgressCardSystemPrompt } from "./progress-card-system-prompt.js";
 
-const { hasPairedCardRenderer } = vi.hoisted(() => ({
-  hasPairedCardRenderer: vi.fn<() => Promise<boolean>>(),
-}));
-
-vi.mock("../infra/device-pairing.js", () => ({ hasPairedCardRenderer }));
-
-const SENTENCE =
-  "During multi-step work, keep your progress card current with the progress_card tool; the user follows it instead of reading the transcript.";
-
-function append(params: {
-  config?: Parameters<typeof appendProgressCardSystemPrompt>[0]["config"];
-  extraSystemPrompt?: string;
-  sessionKey?: string;
-  toolsAllow?: string[];
-}) {
+function append(extraSystemPrompt?: string) {
   return appendProgressCardSystemPrompt({
     agentId: "main",
-    config: params.config,
-    extraSystemPrompt: params.extraSystemPrompt,
+    extraSystemPrompt,
     modelId: "gpt-5.6-sol",
     provider: "openai",
-    sessionKey: params.sessionKey ?? "agent:main:work",
-    toolsAllow: params.toolsAllow,
+    sessionKey: "agent:main:work",
   });
 }
 
 describe("progress card system prompt", () => {
-  beforeEach(() => {
-    hasPairedCardRenderer.mockReset().mockResolvedValue(true);
+  it("does not inject an ambient progress-card obligation", async () => {
+    await expect(append()).resolves.toBeUndefined();
   });
 
-  it("injects the exact instruction when every adoption gate passes", async () => {
-    await expect(append({})).resolves.toBe(SENTENCE);
-  });
+  it("preserves existing system context without adding progress-card choreography", async () => {
+    const existing = "Existing runtime context.";
+    const result = await append(existing);
 
-  it.each([
-    {
-      name: "the progress-card kill switch is disabled",
-      params: { config: { tools: { updatePlan: false } } },
-    },
-    {
-      name: "progress_card is denied",
-      params: { config: { tools: { deny: ["progress_card"] } } },
-    },
-    {
-      name: "the configured profile excludes progress_card",
-      params: { config: { tools: { profile: "messaging" as const } } },
-    },
-    {
-      name: "the runtime allowlist excludes progress_card",
-      params: { toolsAllow: ["read"] },
-    },
-  ])("suppresses the instruction when $name", async ({ params }) => {
-    await expect(append(params)).resolves.toBeUndefined();
-  });
-
-  it.each([
-    { config: undefined, sessionKey: "main" },
-    { config: { session: { scope: "global" as const } }, sessionKey: "global" },
-  ])("suppresses the instruction for the agent main session $sessionKey", async (params) => {
-    await expect(append(params)).resolves.toBeUndefined();
-    expect(hasPairedCardRenderer).not.toHaveBeenCalled();
-  });
-
-  it("suppresses the instruction when no paired client can render the card", async () => {
-    hasPairedCardRenderer.mockResolvedValue(false);
-
-    await expect(append({})).resolves.toBeUndefined();
-  });
-
-  it("suppresses the instruction when the attempt uses the resolved utility model", async () => {
-    await expect(
-      append({
-        config: { agents: { defaults: { utilityModel: "openai/gpt-5.6-sol" } } },
-      }),
-    ).resolves.toBeUndefined();
-  });
-
-  it("preserves incognito-first composition order", async () => {
-    const incognitoPrompt = appendIncognitoSystemPrompt({
-      agentId: "main",
-      extraSystemPrompt: "Existing context.",
-      storePath: resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main" }),
-    });
-
-    await expect(append({ extraSystemPrompt: incognitoPrompt })).resolves.toBe(
-      "Existing context.\n\nThis chat is incognito; do not store its conversation content in memory files or long-term notes.\n\n" +
-        SENTENCE,
-    );
+    expect(result).toBe(existing);
+    expect(result).not.toContain("progress_card");
+    expect(result).not.toContain("progress card");
   });
 });
