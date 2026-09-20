@@ -6,15 +6,18 @@ This checkpoint separates work already settled in the repository from migrations
 
 - Progress-card maintenance is no longer an ambient obligation. The capability remains available.
 - The progress-card architectural decision is recorded in `PROGRESS-CARD-REPAIR.md`.
+- A hidden shared GPT-5 behavior-overlay path was found in `src/plugins/provider-runtime.ts`; guarded source and test migrations are now staged to remove it completely from Vesper's runtime path.
 - Guarded system-prompt source and test migrations are staged.
 - Guarded external-content source and test migrations are staged.
 - `Execution Bias` is intentionally preserved by the system-prompt repair.
 
 ## 1. Guard checks
 
-Run these first, without mutating files:
+Run these first, without mutating files. The GPT-5 overlay checks come first because that shared provider-runtime prefix sits above the main system-prompt repair:
 
 ```sh
+node scripts/vesper/apply-gpt5-overlay-2026.8.2-repair.mjs --check
+node scripts/vesper/apply-gpt5-overlay-tests-2026.8.2-repair.mjs --check
 node scripts/vesper/apply-system-prompt-2026.8.2-repair.mjs --check
 node scripts/vesper/apply-system-prompt-tests-2026.8.2-repair.mjs --check
 node scripts/vesper/apply-external-content-2026.8.2-repair.mjs --check
@@ -23,6 +26,9 @@ node scripts/vesper/apply-external-content-tests-2026.8.2-repair.mjs --check
 
 Expected source blobs at the time this checkpoint was prepared:
 
+- `src/agents/gpt5-prompt-overlay.ts`: `9e8e950f5320378e68ae96bacbf085112b49f5da`
+- `src/plugins/provider-runtime.ts`: `5c10ed9f1b32604c2dd85574dce17559587013d0`
+- `src/plugins/provider-runtime.test.ts`: `5307c069b9a9d13fea0019fd66eb58592c9773f5`
 - `src/agents/system-prompt.ts`: `f2371fa94c7d5938c55271d62a0babab84ebf0a1`
 - `src/agents/system-prompt.test.ts`: `80fcf9f6bab20d5ab81bef4f566bead5aaf8dced`
 - `src/security/external-content.ts`: `7784e78e8c1efa7c9484ceb34f4cd31b8ea301c2`
@@ -32,14 +38,18 @@ Stop if any guard fails. Do not weaken or bypass a failed guard; inspect the cha
 
 ## 2. Apply migrations
 
-If all four checks pass:
+If all six checks pass:
 
 ```sh
+node scripts/vesper/apply-gpt5-overlay-2026.8.2-repair.mjs
+node scripts/vesper/apply-gpt5-overlay-tests-2026.8.2-repair.mjs
 node scripts/vesper/apply-system-prompt-2026.8.2-repair.mjs
 node scripts/vesper/apply-system-prompt-tests-2026.8.2-repair.mjs
 node scripts/vesper/apply-external-content-2026.8.2-repair.mjs
 node scripts/vesper/apply-external-content-tests-2026.8.2-repair.mjs
 ```
+
+The GPT-5 overlay repair does two things deliberately: it makes `resolveGpt5SystemPromptContribution` inert as a defensive backstop, and removes the shared provider-runtime `baseOverlay` injection entirely. Provider-owned prompt contributions remain available, but they receive no hidden GPT-family base behavior contract.
 
 The system-prompt test migration also creates `src/agents/system-prompt.vesper.test.ts`; it intentionally refuses to overwrite an existing file.
 
@@ -49,6 +59,7 @@ Run the focused suites before a broad build:
 
 ```sh
 node scripts/run-vitest.mjs \
+  src/plugins/provider-runtime.test.ts \
   src/agents/system-prompt.test.ts \
   src/agents/system-prompt.vesper.test.ts \
   src/security/external-content.test.ts \
@@ -62,6 +73,9 @@ Then include the already-repaired continuity/heartbeat/memory surfaces from the 
 
 Confirm after migration that:
 
+- no shared GPT-5 behavior contract or interaction-style overlay is injected by provider runtime;
+- provider-owned prompt contributions still work without receiving a hidden GPT-5 `baseOverlay`;
+- `<persona_latch>` is not present in Vesper's runtime prompt merely because the model belongs to the GPT-5 family;
 - runtime identity is descriptive (`Runtime: OpenClaw.`), not a personal-assistant ontology;
 - authored workspace files are loaded as context without runtime-assigned persona/profile ontology;
 - broad independent-goal prohibition is absent;
