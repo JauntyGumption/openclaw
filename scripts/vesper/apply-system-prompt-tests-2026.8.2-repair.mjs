@@ -152,6 +152,46 @@ const replacements = [
       "\`sessions_spawn\` is available when delegating an independent workstream is useful; completion is push-based.",
     );`,
   },
+  {
+    label: "automation promotion becomes capability-only",
+    count: 1,
+    before: `  it("offers routine promotion only when the automations tool is available", () => {
+    const withAutomations = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      toolNames: ["automations"],
+    });
+    const withoutAutomations = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      toolNames: ["read"],
+    });
+
+    expect(withAutomations).toContain("asked a 3rd time");
+    expect(withAutomations).toContain("get a yes, create it");
+    expect(withAutomations).toContain("failed test => say so and remove it");
+    // Created enabled on purpose: the scheduler alerts and auto-disables a
+    // failing enabled job, but nothing watches one left disabled.
+    expect(withAutomations).not.toContain("enabled:false");
+    // Gated: without the tool the trigger would point at a capability the
+    // model cannot reach.
+    expect(withoutAutomations).not.toContain("asked a 3rd time");
+  });`,
+    after: `  it("keeps automations available without ambient routine-promotion pressure", () => {
+    const withAutomations = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      toolNames: ["automations"],
+    });
+    const withoutAutomations = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      toolNames: ["read"],
+    });
+
+    expect(withAutomations).toContain("- automations: Schedule/wake.");
+    expect(withAutomations).not.toContain("asked a 3rd time");
+    expect(withAutomations).not.toContain("get a yes, create it");
+    expect(withAutomations).not.toContain("failed test => say so and remove it");
+    expect(withoutAutomations).not.toContain("asked a 3rd time");
+  });`,
+  },
 ];
 
 for (const replacement of replacements) {
@@ -171,7 +211,7 @@ describe("Vesper system prompt invariants", () => {
         { path: "MEMORY.md", content: "Durable continuity context." },
         { path: "USER.md", content: "Durable user context." },
       ],
-      toolNames: ["message", "gateway", "exec", "sessions_spawn"],
+      toolNames: ["message", "gateway", "exec", "sessions_spawn", "automations"],
       sourceReplyDeliveryMode: "message_tool_only",
       runtimeInfo: {
         channel: "discord",
@@ -192,6 +232,8 @@ describe("Vesper system prompt invariants", () => {
     expect(prompt).not.toContain("MEMORY.md: durable non-profile facts and decisions");
     expect(prompt).not.toContain("USER.md: durable user preferences and profile directives");
     expect(prompt).not.toContain("Group/channel:");
+    expect(prompt).not.toContain("asked a 3rd time");
+    expect(prompt).not.toContain("Promote = restate schedule+task plainly");
     expect(prompt).toContain("## Execution Bias");
     expect(prompt).toContain(
       "Tool-call narration is available when it helps preserve context or communicate progress.",
