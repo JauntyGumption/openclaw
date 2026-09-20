@@ -132,6 +132,23 @@ const replacements = [
     after: `                  "\`sessions_spawn\` is available when delegating an independent workstream is useful; completion is push-based.",`,
   },
   {
+    label: "remove ambient automation promotion",
+    before: `            // The repeat is noticed during ordinary work, not while reading the
+            // automations schema, so this trigger cannot live in that tool's
+            // description; it is gated on the tool so it vanishes when absent.
+            // Create enabled: a failing enabled job is alerted and auto-disabled
+            // by the scheduler, while a job left disabled pending confirmation
+            // is watched by nothing and dies silently.
+            ...(hasAutomations
+              ? [
+                  \`Same job asked a 3rd time: do it, then offer a routine. Check \\\`\${resolveToolName(AUTOMATIONS_TOOL_NAME)}\\\` list first; never duplicate one.\`,
+                  "Promote = restate schedule+task plainly, get a yes, create it (delivery defaults here), then force `run` once as a visible test; failed test => say so and remove it.",
+                ]
+              : []),
+`,
+    after: "",
+  },
+  {
     label: "optional tool narration wording",
     before: `              "Routine low-risk: call silently.",
               "Narrate only complex, sensitive/destructive, or requested steps.",`,
@@ -163,6 +180,10 @@ if (actualBlobSha !== EXPECTED_BLOB_SHA) {
 
 for (const replacement of replacements) {
   text = replaceOnce(text, replacement.before, replacement.after, replacement.label);
+}
+
+if (text.includes("Same job asked a 3rd time") || text.includes("Promote = restate schedule+task plainly")) {
+  throw new Error("ambient automation promotion survived the system prompt repair");
 }
 
 if (process.argv.includes("--check")) {
