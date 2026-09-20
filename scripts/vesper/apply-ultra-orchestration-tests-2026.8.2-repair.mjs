@@ -56,7 +56,7 @@ const replacement = `  });
       workspaceDir: path.join(os.tmpdir(), "openclaw-attempt-ultra-no-forced-delegation"),
     } as unknown as EmbeddedRunAttemptParams);
 
-    expect(setup.proactiveSubagentOrchestration).toBe(false);
+    expect(setup).not.toHaveProperty("proactiveSubagentOrchestration");
   });
 
   it.each(
@@ -71,6 +71,9 @@ text = replaceOnce(
 
 if (!text.includes('it("does not turn ultra thinking into proactive subagent orchestration"')) {
   throw new Error("ultra-orchestration regression test was not inserted");
+}
+if (text.includes("setup.proactiveSubagentOrchestration")) {
+  throw new Error("test migration still expects removed Ultra orchestration plumbing");
 }
 
 if (process.argv.includes("--check")) {
