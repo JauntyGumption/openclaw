@@ -149,6 +149,64 @@ const replacements = [
     after: "",
   },
   {
+    label: "remove ultra orchestration parameter",
+    before: `  /** Run-scoped Ultra behavior; independent from configured delegation preference. */
+  proactiveSubagentOrchestration?: boolean;
+`,
+    after: "",
+  },
+  {
+    label: "remove ultra override from delegation mode",
+    before: `  const subagentDelegationMode = normalizeSubagentDelegationMode(params.subagentDelegationMode);
+  const proactiveSubagentOrchestration = params.proactiveSubagentOrchestration === true;
+  const subagentDelegationPreferenceSection = hasSessionsSpawn
+    ? buildDelegationGuidanceSection({
+        mode: proactiveSubagentOrchestration ? "suggest" : subagentDelegationMode,
+`,
+    after: `  const subagentDelegationMode = normalizeSubagentDelegationMode(params.subagentDelegationMode);
+  const subagentDelegationPreferenceSection = hasSessionsSpawn
+    ? buildDelegationGuidanceSection({
+        mode: subagentDelegationMode,
+`,
+  },
+  {
+    label: "remove ultra orchestration report field",
+    before: `    proactiveSubagentOrchestration,
+`,
+    after: "",
+  },
+  {
+    label: "remove ultra orchestration prompt splice",
+    before: `      ...buildProactiveSubagentOrchestrationSection({
+        enabled: proactiveSubagentOrchestration,
+        hasSessionsSpawn,
+      }),
+`,
+    after: "",
+  },
+  {
+    label: "remove ultra orchestration helper",
+    before: `function buildProactiveSubagentOrchestrationSection(params: {
+  enabled: boolean;
+  hasSessionsSpawn: boolean;
+}): string[] {
+  if (!params.enabled || !params.hasSessionsSpawn) {
+    return [];
+  }
+  return [
+    "## Proactive Sub-Agent Orchestration",
+    "Ultra active. Use \`sessions_spawn\` when independent work improves speed/quality.",
+    "- Parallelize independent investigation, implementation, verification.",
+    "- Simple/tightly coupled stays local.",
+    "- Give bounded objective; synthesize before reply.",
+    "",
+  ];
+}
+
+`,
+    after: "",
+  },
+  {
     label: "optional tool narration wording",
     before: `              "Routine low-risk: call silently.",
               "Narrate only complex, sensitive/destructive, or requested steps.",`,
@@ -184,6 +242,13 @@ for (const replacement of replacements) {
 
 if (text.includes("Same job asked a 3rd time") || text.includes("Promote = restate schedule+task plainly")) {
   throw new Error("ambient automation promotion survived the system prompt repair");
+}
+if (
+  text.includes("proactiveSubagentOrchestration") ||
+  text.includes("## Proactive Sub-Agent Orchestration") ||
+  text.includes("Ultra active. Use `sessions_spawn`")
+) {
+  throw new Error("Ultra thinking still carries proactive subagent orchestration prompt policy");
 }
 
 if (process.argv.includes("--check")) {
