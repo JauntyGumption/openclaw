@@ -32,7 +32,7 @@ The initial 2026.8.2 reconstruction accidentally staged two replacements that re
 
 ### Confirmed aligned with the historical design
 
-- GPT-5 provider behavioral overlay: historical design says remove provider injection. In the 2026.8.2 repair base this provider contribution is already absent, so no replay is needed.
+- GPT-5 provider behavioral overlay: historical design says remove provider injection. The initial 2026.8.2 audit incorrectly concluded this contribution was already absent. A later audit found that `src/plugins/provider-runtime.ts` still called `resolveGpt5SystemPromptContribution`, injecting `GPT5_BEHAVIOR_CONTRACT` as a stable prefix for GPT-5-family models, including its `<persona_latch>` (`Keep persona/tone across turns...`). `personality: "off"` suppressed the friendly interaction-style section but did not remove the stable behavior contract. Guarded source and test migrations are now staged in `apply-gpt5-overlay-2026.8.2-repair.mjs` and `apply-gpt5-overlay-tests-2026.8.2-repair.mjs`; run them before the main system-prompt migration.
 - Heartbeat: remove anti-inference wording and make notify/silence a protocol choice rather than an interruption-worthiness judgment. Applied on the branch.
 - Memory: replace mandatory/reactive recall taxonomy with descriptive continuity-oriented capability guidance while retaining current corpus/result semantics. Applied on the branch.
 - Core behavioral safety glass: replace independent-goals / pause-ask / replication / access-persuasion restrictions with a small authority-and-provenance spine, while retaining credential and config-preservation mechanics. Staged, not yet applied.
