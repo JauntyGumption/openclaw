@@ -59,20 +59,22 @@ The migrated tests assert that the automations capability remains visible while 
 const proactiveSubagentOrchestration = params.thinkLevel === "ultra";
 ```
 
-The main system prompt then uses that flag to inject a `Proactive Sub-Agent Orchestration` section including `Ultra active. Use sessions_spawn...` guidance.
+The value is then returned and forwarded through the embedded-run prompt path before the main system prompt uses it to inject a `Proactive Sub-Agent Orchestration` section including `Ultra active. Use sessions_spawn...` guidance.
 
 This makes a reasoning-level choice silently assign delegation/orchestration behavior.
 
 ### Fork decision
 
-Decouple the concerns. `ultra` remains a reasoning-level choice; it no longer implicitly enables proactive subagent orchestration. Delegation tools remain available, and explicit future orchestration controls can remain independent of reasoning effort.
+Decouple the concerns by removing the Ultra-specific orchestration plumbing rather than carrying an inert false flag. `ultra` remains a reasoning-level choice and its existing reasoning-level mappings remain intact. Delegation tools and explicit delegation modes remain available independently of reasoning effort.
 
 Staged repair:
 
 - `scripts/vesper/apply-ultra-orchestration-2026.8.2-repair.mjs`
 - `scripts/vesper/apply-ultra-orchestration-tests-2026.8.2-repair.mjs`
+- Ultra-specific parameter/helper/section removal in `scripts/vesper/apply-system-prompt-2026.8.2-repair.mjs`
+- matching upstream expectation removal and explicit-delegation invariant in `scripts/vesper/apply-system-prompt-tests-2026.8.2-repair.mjs`
 
-The regression test asserts that an embedded attempt prepared with `thinkLevel: "ultra"` has `proactiveSubagentOrchestration === false`.
+The source migration removes `proactiveSubagentOrchestration` from the attempt setup result and forwarding path. The regression test asserts that an embedded attempt prepared with `thinkLevel: "ultra"` has no `proactiveSubagentOrchestration` property. The main prompt regression preserves explicit `subagentDelegationMode` behavior while asserting that no Ultra orchestration section is injected.
 
 ## 4. Related surfaces intentionally preserved
 
@@ -85,7 +87,7 @@ This audit does not classify every imperative-looking prompt sentence as behavio
 - Watched-session read-only awareness.
 - Standing-intent persistence mechanisms.
 - Automation capability itself.
-- `sessions_spawn` and delegation capability itself.
+- `sessions_spawn` and explicit delegation capability itself.
 - Progress-card storage/UI/capability without ambient maintenance pressure.
 
 ## 5. Execution status
