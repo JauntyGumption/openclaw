@@ -25,6 +25,21 @@ function replaceCount(source, before, after, expectedCount, label) {
   return parts.join(after);
 }
 
+function removeRange(source, startMarker, endMarker, label) {
+  const start = source.indexOf(startMarker);
+  if (start === -1) {
+    throw new Error(`Missing start marker for ${label}`);
+  }
+  if (source.indexOf(startMarker, start + startMarker.length) !== -1) {
+    throw new Error(`Start marker for ${label} is not unique`);
+  }
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  if (end === -1) {
+    throw new Error(`Missing end marker for ${label}`);
+  }
+  return source.slice(0, start) + source.slice(end);
+}
+
 let text = await readFile(testPath, "utf8");
 const actualBlobSha = gitBlobSha(text);
 if (actualBlobSha !== EXPECTED_TEST_BLOB_SHA) {
@@ -198,6 +213,17 @@ for (const replacement of replacements) {
   text = replaceCount(text, replacement.before, replacement.after, replacement.count, replacement.label);
 }
 
+text = removeRange(
+  text,
+  `  it("adds run-scoped Ultra orchestration only when sessions_spawn is callable", () => {`,
+  `  it("omits prefer delegation guidance when sessions_spawn is unavailable", () => {`,
+  "remove upstream Ultra/delegation coupling test",
+);
+
+if (text.includes("proactiveSubagentOrchestration") || text.includes("Ultra active")) {
+  throw new Error("upstream Ultra/delegation coupling expectations survived test migration");
+}
+
 const invariantTest = `import { describe, expect, it } from "vitest";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { buildAgentSystemPrompt } from "./system-prompt.js";
@@ -238,6 +264,21 @@ describe("Vesper system prompt invariants", () => {
     expect(prompt).toContain(
       "Tool-call narration is available when it helps preserve context or communicate progress.",
     );
+  });
+
+  it("keeps delegation explicit instead of deriving it from reasoning effort", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/vesper-home",
+      toolNames: ["sessions_spawn", "automations"],
+      subagentDelegationMode: "prefer",
+    });
+
+    expect(prompt).toContain("## Delegation");
+    expect(prompt).toContain("Mode: prefer");
+    expect(prompt).not.toContain("## Proactive Sub-Agent Orchestration");
+    expect(prompt).not.toContain("Ultra active");
+    expect(prompt).not.toContain("Same job asked a 3rd time");
+    expect(prompt).not.toContain("Promote = restate schedule+task plainly");
   });
 
   it("keeps generic silence as transport semantics rather than a conversational default", () => {
