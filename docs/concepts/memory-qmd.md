@@ -17,8 +17,8 @@ binary, and can index content beyond your workspace memory files.
 - **Index session transcripts** - recall earlier conversations.
 - **Fully local** - runs with the official llama.cpp provider plugin and
   auto-downloads GGUF models.
-- **Automatic fallback** - if QMD is unavailable, OpenClaw falls back to the
-  builtin engine seamlessly.
+- **Configurable fallback** - QMD falls back to the builtin engine by default;
+  set `memory.qmd.fallback = "none"` when QMD should fail closed instead.
 
 ## Getting started
 
@@ -81,11 +81,14 @@ present.
 - With QMD releases that advertise multi-collection filters, OpenClaw groups
   same-source collections into one QMD search invocation. Older QMD releases
   keep the compatible per-collection fallback.
-- If QMD fails entirely, OpenClaw falls back to the builtin SQLite engine.
-  Repeated chat-turn attempts back off briefly after an open failure so a
-  missing binary or broken sidecar dependency does not create a retry storm;
-  `openclaw memory status` and one-shot CLI probes still recheck QMD
-  directly.
+- If QMD fails entirely, `memory.qmd.fallback` controls the response.
+  `"builtin"` (the default) activates the builtin SQLite engine; `"none"`
+  leaves memory search unavailable instead of starting builtin memory.
+  Fail-closed mode also prevents missing optional QMD capabilities from
+  activating builtin as an implicit sidecar. Repeated chat-turn attempts back
+  off briefly after an open failure so a missing binary or broken sidecar
+  dependency does not create a retry storm; `openclaw memory status` and
+  one-shot CLI probes still recheck QMD directly.
 
 <Info>
 The first search may be slow - QMD auto-downloads GGUF models (~2 GB) for
@@ -293,8 +296,8 @@ cycle-safe traversal or explicit exclusion controls.
 
 ## Configuration
 
-For the full config surface (`memory.qmd.*`), search modes, update intervals,
-scope rules, and all other knobs, see the
+For the full config surface (`memory.qmd.*`), search and fallback modes,
+scope rules, and all other supported knobs, see the
 [Memory configuration reference](/reference/memory-config).
 
 ## Related
