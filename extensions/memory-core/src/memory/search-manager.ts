@@ -535,12 +535,20 @@ async function getMemorySearchManagerWithinLifecycle(
             qmdIdentityHash: debugIdentityHash,
           },
         )
-      : finish(await getMemorySearchManagerAfterQmdFailure(params, qmdResolved.fallback, pendingFailureReason), {
-          backend: "qmd",
-          managerCacheState: "fallback-builtin",
+      : finish(
+          await getMemorySearchManagerAfterQmdFailure(
+            params,
+            qmdResolved.fallback,
+            pendingFailureReason,
+          ),
+          {
+            backend: "qmd",
+            managerCacheState:
+              qmdResolved.fallback === "builtin" ? "fallback-builtin" : "qmd-unavailable",
           qmdIdentityHash: debugIdentityHash,
-          failureCode: "qmd-unavailable",
-        });
+            failureCode: "qmd-unavailable",
+          },
+        );
   }
 
   return finish(await getBuiltinMemorySearchManager(params), {
