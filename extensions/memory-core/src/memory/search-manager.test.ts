@@ -1,3 +1,4 @@
+// Stage 1 CI verification touch; no test semantics changed.
 // Search-manager cache identity, acquisition, replacement, and transient lifecycle.
 import {
   checkQmdBinaryAvailability,

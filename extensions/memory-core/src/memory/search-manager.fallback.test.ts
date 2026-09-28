@@ -1,3 +1,4 @@
+// Stage 1 CI verification touch; no test semantics changed.
 // Search-manager fallback, cancellation, races, and teardown behavior.
 import {
   MEMORY_SEARCH_DEADLINE_CONTROL,
