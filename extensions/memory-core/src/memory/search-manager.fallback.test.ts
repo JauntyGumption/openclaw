@@ -44,6 +44,56 @@ describe("getMemorySearchManager fallback and teardown", () => {
     expect(fallbackSearch).toHaveBeenCalledTimes(1);
   });
 
+  it("does not activate builtin when fail-closed qmd search fails", async () => {
+    const agentId = "qmd-fail-closed-search";
+    const cfg = createQmdCfg(agentId, "/tmp/workspace", { fallback: "none" });
+    mockPrimary.search.mockRejectedValueOnce(new Error("qmd query failed"));
+    const manager = requireManager(await getMemorySearchManager({ cfg, agentId }));
+
+    await expect(manager.search("hello")).rejects.toThrow("qmd query failed");
+
+    expect(mockMemoryIndexGet).not.toHaveBeenCalled();
+    expect(fallbackSearch).not.toHaveBeenCalled();
+  });
+
+  it("does not activate builtin for a missing optional qmd project-list capability", async () => {
+    const agentId = "qmd-fail-closed-project-list-missing";
+    const cfg = createQmdCfg(agentId, "/tmp/workspace", { fallback: "none" });
+    const original = mockPrimary.listCuratedProjectCandidates;
+    Reflect.deleteProperty(mockPrimary, "listCuratedProjectCandidates");
+
+    try {
+      const manager = requireManager(await getMemorySearchManager({ cfg, agentId }));
+      const results = await manager.listCuratedProjectCandidates?.({
+        activeProjectKeys: ["github.com/openclaw/openclaw"],
+        limit: 3,
+      });
+
+      expect(results).toStrictEqual([]);
+      expect(mockMemoryIndexGet).not.toHaveBeenCalled();
+      expect(mockPrimary.search).not.toHaveBeenCalled();
+    } finally {
+      Object.assign(mockPrimary, { listCuratedProjectCandidates: original });
+    }
+  });
+
+  it("does not activate builtin when fail-closed curated project listing fails", async () => {
+    const agentId = "qmd-fail-closed-project-list-error";
+    const cfg = createQmdCfg(agentId, "/tmp/workspace", { fallback: "none" });
+    mockPrimary.listCuratedProjectCandidates.mockRejectedValueOnce(
+      new Error("qmd project listing failed"),
+    );
+    const manager = requireManager(await getMemorySearchManager({ cfg, agentId }));
+
+    const results = await manager.listCuratedProjectCandidates?.({
+      activeProjectKeys: ["github.com/openclaw/openclaw"],
+      limit: 3,
+    });
+
+    expect(results).toStrictEqual([]);
+    expect(mockMemoryIndexGet).not.toHaveBeenCalled();
+  });
+
   it("falls back to builtin when curated project listing fails", async () => {
     const agentId = "project-list-fallback";
     const cfg = createQmdCfg(agentId);
