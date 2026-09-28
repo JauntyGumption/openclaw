@@ -1,3 +1,4 @@
+// Stage 1 CI verification touch; no test semantics changed.
 import {
   abortSearchScenarios,
   runAbortSearchScenario,
