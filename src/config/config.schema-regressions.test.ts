@@ -148,6 +148,24 @@ describe("config schema regressions", () => {
     ).toBe(true);
   });
 
+  it.each(["builtin", "none"])("accepts memory.qmd.fallback %s", (fallback) => {
+    expect(
+      validateConfigObject({
+        memory: { backend: "qmd", qmd: { fallback } },
+        agents: { defaults: {} },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("rejects unsupported memory.qmd.fallback values", () => {
+    expect(
+      validateConfigObject({
+        memory: { backend: "qmd", qmd: { fallback: "other" } },
+        agents: { defaults: {} },
+      }).ok,
+    ).toBe(false);
+  });
+
   it("accepts mixed extra memory path entries", () => {
     expect(
       validateConfigObject({
