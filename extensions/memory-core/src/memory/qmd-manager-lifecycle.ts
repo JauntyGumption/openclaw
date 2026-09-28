@@ -105,7 +105,12 @@ export abstract class QmdManagerLifecycle extends QmdManagerSync {
   }
 
   protected async maybeWarmSession(sessionKey?: string): Promise<void> {
-    if (this.mode === "cli" || this.closing || this.closed || !this.syncSettings?.onSessionStart) {
+    if (
+      this.mode === "cli" ||
+      this.closing ||
+      this.closed ||
+      !this.syncSettings?.onSessionStart
+    ) {
       return;
     }
     const key = sessionKey?.trim() || "";
@@ -119,7 +124,13 @@ export abstract class QmdManagerLifecycle extends QmdManagerSync {
   }
 
   protected async maybeSyncDirtySearchState(): Promise<void> {
-    if (this.mode === "cli" || this.closing || this.closed || !this.syncSettings?.onSearch || !this.dirty) {
+    if (
+      this.mode === "cli" ||
+      this.closing ||
+      this.closed ||
+      !this.syncSettings?.onSearch ||
+      !this.dirty
+    ) {
       return;
     }
     await this.sync({ reason: "search" });

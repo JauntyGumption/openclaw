@@ -618,17 +618,17 @@ Built-in memory indexes live in each agent's OpenClaw SQLite database at
 
 Set `memory.backend = "qmd"` to enable. All QMD settings live under `memory.qmd`:
 
-| Key                      | Type      | Default  | Description                                                                           |
-| ------------------------ | --------- | -------- | ------------------------------------------------------------------------------------- |
-| `command`                | `string`  | `qmd`    | QMD executable path; set an absolute path when service `PATH` differs from your shell |
-| `fallback`               | `string`  | `builtin` | QMD failure policy: `builtin` or fail-closed `none`                                 |
-| `searchMode`             | `string`  | `search` | Search command: `search`, `vsearch`, `query`                                          |
-| `rerank`                 | `boolean` | --       | Set to `false` with `searchMode: "query"` and QMD 2.1+ to skip QMD reranking          |
-| `includeDefaultMemory`   | `boolean` | `true`   | Auto-index `MEMORY.md` + `memory/**/*.md`                                             |
-| `paths[]`                | `array`   | --       | Extra paths: `{ name, path, pattern? }`                                               |
-| `sessions.enabled`       | `boolean` | `false`  | Export session transcripts into QMD                                                   |
-| `sessions.retentionDays` | `number`  | --       | Transcript retention                                                                  |
-| `sessions.exportDir`     | `string`  | --       | Export directory                                                                      |
+| Key                      | Type      | Default   | Description                                                                           |
+| ------------------------ | --------- | --------- | ------------------------------------------------------------------------------------- |
+| `command`                | `string`  | `qmd`     | QMD executable path; set an absolute path when service `PATH` differs from your shell |
+| `fallback`               | `string`  | `builtin` | QMD failure policy: `builtin` or fail-closed `none`                                  |
+| `searchMode`             | `string`  | `search`  | Search command: `search`, `vsearch`, `query`                                          |
+| `rerank`                 | `boolean` | --        | Set to `false` with `searchMode: "query"` and QMD 2.1+ to skip QMD reranking          |
+| `includeDefaultMemory`   | `boolean` | `true`    | Auto-index `MEMORY.md` + `memory/**/*.md`                                             |
+| `paths[]`                | `array`   | --        | Extra paths: `{ name, path, pattern? }`                                               |
+| `sessions.enabled`       | `boolean` | `false`   | Export session transcripts into QMD                                                   |
+| `sessions.retentionDays` | `number`  | --        | Transcript retention                                                                  |
+| `sessions.exportDir`     | `string`  | --        | Export directory                                                                      |
 
 `searchMode: "search"` is lexical/BM25-only. OpenClaw does not run semantic vector readiness probes or QMD embedding maintenance for that mode, including during `memory status --deep`; `vsearch` and `query` continue to require QMD vector readiness and embeddings.
 

@@ -149,7 +149,9 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
   }
 
   async probeVectorAvailability(): Promise<boolean> {
-    return await this.withManagerOperation(async () => await this.probeVectorAvailabilityAdmitted());
+    return await this.withManagerOperation(
+      async () => await this.probeVectorAvailabilityAdmitted(),
+    );
   }
 
   private async probeVectorAvailabilityAdmitted(): Promise<boolean> {
