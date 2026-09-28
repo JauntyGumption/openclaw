@@ -158,6 +158,23 @@ describe("getMemorySearchManager caching and lifecycle", () => {
     expect(createQmdManagerMock).not.toHaveBeenCalled();
   });
 
+  it("fails QMD closed without builtin when the host omits SQLite lease coordination", async () => {
+    const agentId = "missing-lease-host-fail-closed";
+    const cfg = createQmdCfg(agentId, "/tmp/workspace", { fallback: "none" });
+
+    const result = await getMemorySearchManagerWithoutLease({ cfg, agentId });
+
+    expect(result.manager).toBeNull();
+    expect(result.error).toContain("memory-core host does not provide SQLite lease coordination");
+    expect(result.debug).toMatchObject({
+      backend: "qmd",
+      managerCacheState: "qmd-unavailable",
+      failureCode: "qmd-unavailable",
+    });
+    expect(mockMemoryIndexGet).not.toHaveBeenCalled();
+    expect(createQmdManagerMock).not.toHaveBeenCalled();
+  });
+
   it("keeps the cached QMD manager active when the caller cancels a search", async () => {
     const agentId = "cancelled-search";
     const cfg = createQmdCfg(agentId);
