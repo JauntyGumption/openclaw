@@ -14,6 +14,8 @@ export type MemoryBackend = "builtin" | "qmd";
 export type MemoryCitationsMode = "auto" | "on" | "off";
 /** QMD search command flavor used for retrieval. */
 export type MemoryQmdSearchMode = "query" | "search" | "vsearch";
+/** Fallback policy when the QMD backend is unavailable or cannot serve an operation. */
+export type MemoryQmdFallbackMode = "builtin" | "none";
 
 /** Top-level memory config block. */
 export type MemoryConfig = {
@@ -27,6 +29,7 @@ export type MemoryConfig = {
 /** QMD-specific memory backend config. */
 export type MemoryQmdConfig = {
   command?: string;
+  fallback?: MemoryQmdFallbackMode;
   searchMode?: MemoryQmdSearchMode;
   rerank?: boolean;
   searchTool?: string;
