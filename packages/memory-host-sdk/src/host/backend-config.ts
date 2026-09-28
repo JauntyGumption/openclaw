@@ -11,6 +11,7 @@ import {
   type MemoryBackend,
   type MemoryCitationsMode,
   type MemoryQmdConfig,
+  type MemoryQmdFallbackMode,
   type MemoryQmdIndexPath,
   type MemoryQmdSearchMode,
   type MemoryQmdStartupMode,
@@ -111,6 +112,7 @@ export type ResolvedQmdMcporterConfig = {
 
 export type ResolvedQmdConfig = {
   command: string;
+  fallback: MemoryQmdFallbackMode;
   mcporter: ResolvedQmdMcporterConfig;
   searchMode: MemoryQmdSearchMode;
   rerank?: boolean;
@@ -131,6 +133,7 @@ const DEFAULT_QMD_TIMEOUT_MS = 4_000;
 // Defaulting to `query` can be extremely slow on CPU-only systems (query expansion + rerank).
 // Prefer a faster mode for interactive use; users can opt into `query` for best recall.
 const DEFAULT_QMD_SEARCH_MODE: MemoryQmdSearchMode = "search";
+const DEFAULT_QMD_FALLBACK: MemoryQmdFallbackMode = "builtin";
 const DEFAULT_QMD_STARTUP: MemoryQmdStartupMode = "off";
 const DEFAULT_QMD_STARTUP_DELAY_MS = 120_000;
 const DEFAULT_QMD_EMBED_INTERVAL = "60m";
@@ -284,6 +287,10 @@ function resolveLimits(raw?: MemoryQmdConfig["limits"]): ResolvedQmdLimitsConfig
     ),
     timeoutMs: resolvePositiveIntegerConfig(raw?.timeoutMs, DEFAULT_QMD_LIMITS.timeoutMs),
   };
+}
+
+function resolveFallbackMode(raw?: MemoryQmdConfig["fallback"]): MemoryQmdFallbackMode {
+  return raw === "none" ? "none" : DEFAULT_QMD_FALLBACK;
 }
 
 function resolveSearchMode(raw?: MemoryQmdConfig["searchMode"]): MemoryQmdSearchMode {
@@ -452,6 +459,7 @@ export function resolveMemoryBackendConfig(params: {
   const command = resolveQmdCommand(rawCommand);
   const resolved: ResolvedQmdConfig = {
     command,
+    fallback: resolveFallbackMode(qmdCfg?.fallback),
     mcporter: { ...DEFAULT_QMD_MCPORTER },
     searchMode: resolveSearchMode(qmdCfg?.searchMode),
     rerank: qmdCfg?.rerank,
