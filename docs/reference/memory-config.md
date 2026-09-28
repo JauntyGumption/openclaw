@@ -621,6 +621,7 @@ Set `memory.backend = "qmd"` to enable. All QMD settings live under `memory.qmd`
 | Key                      | Type      | Default  | Description                                                                           |
 | ------------------------ | --------- | -------- | ------------------------------------------------------------------------------------- |
 | `command`                | `string`  | `qmd`    | QMD executable path; set an absolute path when service `PATH` differs from your shell |
+| `fallback`               | `string`  | `builtin`| QMD failure policy: `builtin` or fail-closed `none`                                  |
 | `searchMode`             | `string`  | `search` | Search command: `search`, `vsearch`, `query`                                          |
 | `rerank`                 | `boolean` | --       | Set to `false` with `searchMode: "query"` and QMD 2.1+ to skip QMD reranking          |
 | `includeDefaultMemory`   | `boolean` | `true`   | Auto-index `MEMORY.md` + `memory/**/*.md`                                             |
@@ -690,7 +691,7 @@ QMD initializes lazily when memory is first used; its adapter owns refresh and e
     citations: "auto",
     qmd: {
       includeDefaultMemory: true,
-      update: { interval: "5m", debounceMs: 15000 },
+      fallback: "builtin",
       limits: { maxResults: 4, timeoutMs: 4000 },
       scope: {
         default: "deny",
