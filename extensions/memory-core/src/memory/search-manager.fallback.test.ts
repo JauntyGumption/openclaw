@@ -158,6 +158,35 @@ describe("getMemorySearchManager fallback and teardown", () => {
     expect(fallbackSearch).toHaveBeenCalledTimes(2);
   });
 
+  it("lets a sibling admitted primary search finish while the failed primary retires", async () => {
+    const agentId = "qmd-concurrent-primary-retirement";
+    const cfg = createQmdCfg(agentId, "/tmp/workspace", { fallback: "none" });
+    const failingSearchGate = createDeferred<void>();
+    const siblingSearchGate = createDeferred<[]>();
+    let call = 0;
+    mockPrimary.search.mockImplementation(async () => {
+      call += 1;
+      if (call === 1) {
+        await failingSearchGate.promise;
+        throw new Error("qmd query failed");
+      }
+      return await siblingSearchGate.promise;
+    });
+    const manager = requireManager(await getMemorySearchManager({ cfg, agentId }));
+
+    const failing = manager.search("first");
+    const sibling = manager.search("second");
+    await vi.waitFor(() => expect(mockPrimary.search).toHaveBeenCalledTimes(2));
+
+    failingSearchGate.resolve();
+    await expect(failing).rejects.toThrow("qmd query failed");
+    await vi.waitFor(() => expect(mockPrimary.close).toHaveBeenCalledTimes(1));
+
+    siblingSearchGate.resolve([]);
+    await expect(sibling).resolves.toStrictEqual([]);
+    expect(mockMemoryIndexGet).not.toHaveBeenCalled();
+  });
+
   it("joins and closes builtin fallback creation during wrapper teardown", async () => {
     const agentId = "fallback-create-close-race";
     const { manager } = await createFailedQmdSearchHarness({
