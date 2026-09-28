@@ -453,12 +453,20 @@ async function getMemorySearchManagerWithinLifecycle(
               qmdIdentityHash: debugIdentityHash,
             },
           )
-        : finish(await getMemorySearchManagerAfterQmdFailure(params, qmdResolved.fallback, failureReason), {
-            backend: "qmd",
-            managerCacheState: qmdResolved.fallback === "builtin" ? "fallback-builtin" : "qmd-unavailable",
-            qmdIdentityHash: debugIdentityHash,
-            failureCode: "qmd-unavailable",
-          });
+        : finish(
+            await getMemorySearchManagerAfterQmdFailure(
+              params,
+              qmdResolved.fallback,
+              failureReason,
+            ),
+            {
+              backend: "qmd",
+              managerCacheState:
+                qmdResolved.fallback === "builtin" ? "fallback-builtin" : "qmd-unavailable",
+              qmdIdentityHash: debugIdentityHash,
+              failureCode: "qmd-unavailable",
+            },
+          );
     }
 
     const recentFailure = getActiveQmdManagerOpenFailure(scopeKey, identityKey);
@@ -469,7 +477,11 @@ async function getMemorySearchManagerWithinLifecycle(
           : `qmd memory unavailable during cooldown; builtin fallback disabled: ${recentFailure.reason}`,
       );
       return finish(
-        await getMemorySearchManagerAfterQmdFailure(params, qmdResolved.fallback, recentFailure.reason),
+        await getMemorySearchManagerAfterQmdFailure(
+          params,
+          qmdResolved.fallback,
+          recentFailure.reason,
+        ),
         {
           backend: "qmd",
           managerCacheState: "recent-failure-cooldown",
@@ -545,7 +557,7 @@ async function getMemorySearchManagerWithinLifecycle(
             backend: "qmd",
             managerCacheState:
               qmdResolved.fallback === "builtin" ? "fallback-builtin" : "qmd-unavailable",
-          qmdIdentityHash: debugIdentityHash,
+            qmdIdentityHash: debugIdentityHash,
             failureCode: "qmd-unavailable",
           },
         );
