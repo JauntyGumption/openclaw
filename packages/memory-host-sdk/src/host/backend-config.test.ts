@@ -144,6 +144,24 @@ describe("resolveMemoryBackendConfig", () => {
     expect(requireQmdConfig(resolved).fallback).toBe("none");
   });
 
+  it("resolves the Stage 1 fail-closed smoke config with session export disabled", () => {
+    const cfg = {
+      agents: { defaults: { workspace: "/tmp/memory-test" } },
+      memory: {
+        backend: "qmd",
+        search: { rememberAcrossConversations: false },
+        qmd: { fallback: "none" },
+      },
+    } as OpenClawConfig;
+
+    const resolved = resolveMemoryBackendConfig({ cfg, agentId: "main" });
+    const qmd = requireQmdConfig(resolved);
+
+    expect(qmd.fallback).toBe("none");
+    expect(qmd.sessions.enabled).toBe(false);
+    expect(qmd.sessions.readable).toBe(false);
+  });
+
   it("keeps QMD session export off by default when DM isolation is configured", () => {
     const cfg = {
       agents: { defaults: { workspace: "/tmp/memory-test" } },
