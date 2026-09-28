@@ -65,6 +65,7 @@ class FallbackMemoryManager implements MemorySearchManager {
   private fallbackInitPromise: Promise<Maybe<MemorySearchManager>> | null = null;
   private primaryFailed = false;
   private lastError?: string;
+  private lastPrimaryStatus: ReturnType<MemorySearchManager["status"]> | null = null;
   private cacheEvicted = false;
   private closed = false;
   private closePromise: Promise<void> | null = null;
@@ -94,6 +95,11 @@ class FallbackMemoryManager implements MemorySearchManager {
         }
         this.primaryFailed = true;
         this.lastError = formatErrorMessage(err);
+        try {
+          this.lastPrimaryStatus = this.deps.primary.status();
+        } catch {
+          this.lastPrimaryStatus = null;
+        }
         this.deps.log.warn(
           this.deps.fallbackMode === "builtin"
             ? `qmd memory failed; switching to builtin index: ${this.lastError}`
@@ -154,6 +160,11 @@ class FallbackMemoryManager implements MemorySearchManager {
       } catch (err) {
         this.primaryFailed = true;
         this.lastError = formatErrorMessage(err);
+        try {
+          this.lastPrimaryStatus = this.deps.primary.status();
+        } catch {
+          this.lastPrimaryStatus = null;
+        }
         this.deps.log.warn(
           this.deps.fallbackMode === "builtin"
             ? `qmd memory failed; switching to builtin index: ${this.lastError}`
@@ -176,7 +187,8 @@ class FallbackMemoryManager implements MemorySearchManager {
     if (!this.primaryFailed) {
       return this.deps.primary.status();
     }
-    const fallbackStatus = this.fallback?.status() ?? this.deps.primary.status();
+    const fallbackStatus =
+      this.fallback?.status() ?? this.lastPrimaryStatus ?? this.deps.primary.status();
     const fallbackInfo = { from: "qmd", reason: this.lastError ?? "unknown" };
     return {
       ...fallbackStatus,
