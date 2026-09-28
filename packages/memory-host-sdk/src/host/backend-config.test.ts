@@ -117,6 +117,7 @@ describe("resolveMemoryBackendConfig", () => {
     const qmd = requireQmdConfig(resolved);
     expect(qmd.collections.length).toBe(2);
     expect(qmd.command).toBe("qmd");
+    expect(qmd.fallback).toBe("builtin");
     expect(qmd.searchMode).toBe("search");
     expect(qmd.update.intervalMs).toBe(300_000);
     expect(qmd.update.debounceMs).toBe(15_000);
@@ -130,6 +131,17 @@ describe("resolveMemoryBackendConfig", () => {
     expect(qmd.update.embedTimeoutMs).toBe(120_000);
     expect(collectionNames(resolved)).toStrictEqual(["memory-dir-main", "memory-root-main"]);
     expect(requireQmdCollection(resolved, "memory-root-main").pattern).toBe("MEMORY.md");
+  });
+
+  it("resolves explicit fail-closed QMD fallback policy", () => {
+    const cfg = {
+      agents: { defaults: { workspace: "/tmp/memory-test" } },
+      memory: { backend: "qmd", qmd: { fallback: "none" } },
+    } as OpenClawConfig;
+
+    const resolved = resolveMemoryBackendConfig({ cfg, agentId: "main" });
+
+    expect(requireQmdConfig(resolved).fallback).toBe("none");
   });
 
   it("keeps QMD session export off by default when DM isolation is configured", () => {
