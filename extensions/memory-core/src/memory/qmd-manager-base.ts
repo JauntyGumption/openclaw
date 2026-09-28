@@ -421,6 +421,7 @@ export abstract class QmdManagerBase {
     const targetModelsDir = path.join(this.xdgCacheHome, "qmd", "models");
     try {
       const stat = await fs.stat(defaultModelsDir).catch((err: unknown) => {
+        // SAFETY: node:fs promise rejections use ErrnoException; only its optional code is read.
         if ((err as NodeJS.ErrnoException).code === "ENOENT") {
           return null;
         }
@@ -438,6 +439,7 @@ export abstract class QmdManagerBase {
       try {
         await fs.symlink(defaultModelsDir, targetModelsDir, "dir");
       } catch (symlinkErr: unknown) {
+        // SAFETY: node:fs promise rejections use ErrnoException; only its optional code is read.
         const code = (symlinkErr as NodeJS.ErrnoException).code;
         if (process.platform === "win32" && (code === "EPERM" || code === "ENOTSUP")) {
           await fs.symlink(defaultModelsDir, targetModelsDir, "junction");

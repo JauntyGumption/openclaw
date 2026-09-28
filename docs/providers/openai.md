@@ -807,67 +807,31 @@ request reaches the provider, so aspect-ratio requests generally still work.
 `Ignored unsupported overrides for openai/<model>: resolution=<value>`.
 </Note>
 
-## GPT-5 prompt contribution
+## Deprecated GPT-5 prompt compatibility
 
-OpenClaw adds a shared GPT-5 prompt contribution to matching GPT-5-family
-OpenClaw-assembled prompts. The OpenAI plugin setting below controls the
-friendly style on OpenAI-family routes. Older GPT-4.x model ids do not match.
+OpenClaw does not inject a shared behavior contract, friendly style, heartbeat
+philosophy, or other behavioral payload merely because a route uses a GPT-5-
+family model. The deprecated `resolveGpt5SystemPromptContribution` helper
+returns no contribution, and its historical prompt-payload exports are empty
+compatibility values.
 
-The native Codex app-server harness does not receive the persona/tool-
-discipline behavior contract or the friendly interaction-style overlay through
-developer instructions; native Codex keeps Codex-owned base, model, and
-project-doc behavior, and OpenClaw disables Codex's built-in personality for
-native threads so agent workspace personality files stay authoritative.
-OpenClaw contributes only runtime context to native Codex threads: channel
-delivery, OpenClaw dynamic tools, ACP delegation, workspace context, and
-OpenClaw skills. The heartbeat-guidance text from this same contribution is the
-one exception: native Codex heartbeat turns do get it, injected as dedicated
-collaboration instructions rather than through the shared prompt-contribution
-hook.
+The bundled OpenAI plugin does not register a GPT-5 system-prompt contribution.
+It still accepts `plugins.entries.openai.config.personality` values
+(`"friendly"`, `"on"`, and `"off"`) as deprecated no-ops so existing
+configurations continue to validate. Remove the setting from new
+configurations.
 
-The GPT-5 contribution adds a tagged behavior contract for persona
-persistence, execution safety, tool discipline, output shape, completion
-checks, and verification on matching OpenClaw-assembled prompts. Channel-
-specific reply and silent-message behavior stays in the shared OpenClaw system
-prompt and outbound delivery policy. The friendly interaction-style layer is
-separate and configurable.
-
-| Value                  | Effect                                      |
-| ---------------------- | ------------------------------------------- |
-| `"friendly"` (default) | Enable the friendly interaction-style layer |
-| `"on"`                 | Alias for `"friendly"`                      |
-| `"off"`                | Disable only the friendly style layer       |
-
-<Tabs>
-  <Tab title="Config">
-    ```json5
-    {
-      plugins: {
-        entries: {
-          openai: {
-            config: { personality: "friendly" },
-          },
-        },
-      },
-    }
-    ```
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    openclaw config set plugins.entries.openai.config.personality off
-    ```
-  </Tab>
-</Tabs>
-
-<Tip>
-Values are case-insensitive at runtime, so `"Off"` and `"off"` both disable the
-friendly style layer.
-</Tip>
+Native Codex app-server routes continue to use Codex-owned base and model
+instructions plus project documents. OpenClaw disables Codex's built-in
+personality for native threads so agent workspace files remain authoritative;
+it contributes runtime context such as channel delivery, dynamic tools,
+workspace context, and skills rather than a GPT-family behavioral overlay.
 
 <Note>
-The retired `agents.defaults.promptOverlays` key is no longer read; config
-validation rejects it, and `openclaw doctor --fix` migrates its personality
-value into `plugins.entries.openai.config.personality` when that key is unset.
+The retired `agents.defaults.promptOverlays` key is no longer read and config
+validation rejects it. Older doctor migrations may preserve its personality
+value under the deprecated OpenAI plugin setting, but that value no longer
+changes prompt behavior.
 </Note>
 
 ## Voice and speech

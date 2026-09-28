@@ -1446,7 +1446,6 @@ describe("searchMemoryWiki", () => {
       ],
       readResult: {
         status: "ok",
-        path: "sessions/secondary/private-session.jsonl",
         path: "qmd/sessions-secondary/private-session.md",
         text: "other agent transcript",
       },
@@ -2284,7 +2283,6 @@ describe("getMemoryWikiPage", () => {
     const manager = createMemoryManager({
       readResult: {
         status: "ok",
-        path: "sessions/main/child-session.jsonl",
         path: "qmd/sessions-main/sibling-session.md",
         text: "sibling transcript content",
       },

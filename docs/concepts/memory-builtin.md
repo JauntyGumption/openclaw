@@ -5,7 +5,7 @@ title: "Builtin memory engine"
 read_when:
   - You want to understand the default memory backend
   - You want to configure embedding providers or hybrid search
-  - You are migrating from the removed QMD memory backend
+  - You are switching from QMD to the builtin memory backend
 ---
 
 The builtin engine is the default memory backend. It stores your memory index
@@ -125,31 +125,22 @@ You can also index Markdown files outside the workspace with
 [configuration reference](/reference/memory-config#additional-memory-paths).
 </Info>
 
-## Migrating from QMD
+## Switching from QMD to builtin
 
-QMD has been removed; builtin is the only memory engine. After upgrading, run:
+QMD remains available as an optional memory backend; builtin is the default.
+The `memory.backend` setting selects `"builtin"` or `"qmd"`. To switch an
+existing QMD setup back to builtin, run:
 
 ```bash
-openclaw doctor --fix
+openclaw config set memory.backend builtin
 ```
 
-Doctor removes the retired `memory.backend`, `memory.qmd`, and
-`memory.search.qmd` settings, including agent-scoped `memory.search.qmd`
-forms. It preserves QMD paths and extra collections as the corresponding
-`memory.search.extraPaths` entries, including `{ path, pattern }` globs. When
-QMD session indexing was enabled, Doctor also enables builtin session indexing
-and adds `sessions` to `memory.search.sources` without enabling broader
-cross-conversation recall. Retained session-reset transcripts remain in the
-agent's sessions directory and are indexed from those original artifacts.
-
-When Memory Core finds a retired per-agent QMD workspace under
-`~/.openclaw/agents/<agentId>/qmd/`, Doctor also offers to remove its derived
-indexes, model downloads, collection metadata, and session exports.
-
-Canonical memory remains in `MEMORY.md`, `USER.md`, `memory/*.md`, and the
-migrated extra paths. Builtin indexes those same Markdown sources on its next
-sync. The cutover is lossless by construction: no canonical memory content is
-copied or deleted; only derived state is rebuilt.
+With builtin selected, OpenClaw uses the builtin index and does not initialize
+the QMD sidecar or consume `memory.qmd` and `memory.search.qmd` settings.
+Canonical memory remains in `MEMORY.md`, `USER.md`, and `memory/*.md`, so the
+backend switch does not require copying those files. Builtin indexes those
+Markdown sources on its next sync; configure `memory.search.extraPaths`
+separately for any additional files or directories that builtin should index.
 
 Builtin now covers most QMD use cases with:
 

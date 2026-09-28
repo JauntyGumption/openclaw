@@ -380,7 +380,7 @@ export class QmdCommandClient {
     const structuredRecord = asRecord(structured);
     const results: unknown[] =
       structuredRecord && Array.isArray(structuredRecord.results)
-        ? (structuredRecord.results as unknown[])
+        ? (structuredRecord.results as unknown[]) // SAFETY: Array.isArray proved array shape; elements remain unknown.
         : Array.isArray(structured)
           ? structured
           : [];

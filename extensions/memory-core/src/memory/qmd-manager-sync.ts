@@ -377,6 +377,7 @@ export abstract class QmdManagerSync extends QmdManagerBase {
         this.closeSignal.then(() => "closed" as const),
       ]);
       if (waitResult === "closed") {
+        // SAFETY: The sole caller discards T; closure short-circuits queued work before any result is observed.
         return undefined as T;
       }
       // The in-process queue is keyed per store; the per-agent write lease also

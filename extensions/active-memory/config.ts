@@ -136,11 +136,6 @@ function resolveToolsAllow(params: { pluginToolsAllow: unknown; cfg?: OpenClawCo
   );
 }
 
-function normalizePromptConfigText(value: unknown): string | undefined {
-  const text = typeof value === "string" ? value.trim() : "";
-  return text ? text : undefined;
-}
-
 function resolveQmdSearchMode(value: unknown): ActiveMemoryQmdSearchMode {
   if (value === "inherit" || value === "search" || value === "vsearch" || value === "query") {
     return value;

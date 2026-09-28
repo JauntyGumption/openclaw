@@ -73,6 +73,7 @@ function ensureQmdSessionArtifactSchema(db: DatabaseSync): void {
   } catch {}
   const table = db
     .prepare("SELECT strict FROM pragma_table_list WHERE schema = 'main' AND name = ?")
+    // SAFETY: pragma_table_list returns the selected strict flag or no row.
     .get(QMD_SESSION_ARTIFACT_TABLE) as { strict?: unknown } | undefined;
   if (Number(table?.strict ?? 0) !== 1) {
     migrateSqliteSchemaToStrict(db, QMD_SESSION_ARTIFACT_SCHEMA, {
@@ -121,6 +122,7 @@ export function copyQmdSessionArtifactHit(
 export function readQmdSessionArtifactIdentity(
   hit: MemorySearchResult,
 ): QmdSessionArtifactIdentity | null {
+  // SAFETY: MemorySearchResult is an object and this module alone defines the optional symbol property.
   return (hit as QmdSessionArtifactHitCarrier)[QMD_SESSION_ARTIFACT_HIT] ?? null;
 }
 
@@ -197,6 +199,7 @@ export function refreshQmdSessionArtifactDocIds(params: {
           AND d.active = 1
          WHERE m.collection = ?`,
       )
+      // SAFETY: The controlled join projects docid and artifact_path text from owned schemas.
       .all(params.collection) as Array<{ artifact_path: string; docid: string }>;
     const updateDocId = db.prepare(
       `UPDATE ${QMD_SESSION_ARTIFACT_TABLE}
@@ -267,6 +270,7 @@ function findQmdSessionArtifactByDocId(
        FROM ${QMD_SESSION_ARTIFACT_TABLE}
        WHERE docid = ?`,
     )
+    // SAFETY: The controlled SELECT aliases every field to QmdSessionArtifactRow's owned-schema shape.
     .all(docid) as QmdSessionArtifactRow[];
   return pickQmdSessionArtifactRow(rows, lookup);
 }
@@ -287,6 +291,7 @@ function findQmdSessionArtifactByPath(
       lookup.searchPath,
       lookup.collection ?? "",
       lookup.artifactPath ?? "",
+      // SAFETY: The controlled SELECT aliases every field to QmdSessionArtifactRow's owned-schema shape.
     ) as QmdSessionArtifactRow[];
   return pickQmdSessionArtifactRow(rows, lookup);
 }

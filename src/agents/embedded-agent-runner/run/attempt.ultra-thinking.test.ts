@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 describe("runEmbeddedAttempt Ultra thinking", () => {
-  it("enables proactive prompting while giving agent-core max effort", async () => {
+  it("keeps ultra reasoning without enabling proactive prompting", async () => {
     await createContextEngineAttemptRunner({
       contextEngine: createContextEngineBootstrapAndAssemble(),
       sessionKey: "agent:main:main",
@@ -39,7 +39,6 @@ describe("runEmbeddedAttempt Ultra thinking", () => {
 
     const promptInput = hoisted.embeddedSystemPromptInputs.at(-1) as {
       defaultThinkLevel?: string;
-      proactiveSubagentOrchestration?: boolean;
     };
     const sessionOptions = hoisted.createAgentSessionMock.mock.calls.at(-1)?.[0] as {
       thinkingLevel?: string;
@@ -47,7 +46,7 @@ describe("runEmbeddedAttempt Ultra thinking", () => {
     const providerThinkingLevel = hoisted.applyExtraParamsToAgentMock.mock.calls.at(-1)?.[5];
 
     expect(promptInput.defaultThinkLevel).toBe("ultra");
-    expect(promptInput.proactiveSubagentOrchestration).toBe(true);
+    expect(promptInput).not.toHaveProperty("proactiveSubagentOrchestration");
     expect(sessionOptions.thinkingLevel).toBe("max");
     expect(providerThinkingLevel).toBe("max");
   });
@@ -65,7 +64,6 @@ describe("runEmbeddedAttempt Ultra thinking", () => {
 
     const promptInput = hoisted.embeddedSystemPromptInputs.at(-1) as {
       defaultThinkLevel?: string;
-      proactiveSubagentOrchestration?: boolean;
     };
     const sessionOptions = hoisted.createAgentSessionMock.mock.calls.at(-1)?.[0] as {
       thinkingLevel?: string;
@@ -73,7 +71,7 @@ describe("runEmbeddedAttempt Ultra thinking", () => {
     const providerThinkingLevel = hoisted.applyExtraParamsToAgentMock.mock.calls.at(-1)?.[5];
 
     expect(promptInput.defaultThinkLevel).toBe("max");
-    expect(promptInput.proactiveSubagentOrchestration).toBe(false);
+    expect(promptInput).not.toHaveProperty("proactiveSubagentOrchestration");
     expect(sessionOptions.thinkingLevel).toBe("max");
     expect(providerThinkingLevel).toBe("max");
   });

@@ -35,15 +35,23 @@ const targets = [
     replacements: [
       {
         label: "remove Ultra orchestration destructure",
-        before: `    proactiveSubagentOrchestration,
+        before: `    prepStages,
+    proactiveSubagentOrchestration,
+    providerThinkingLevel,
 `,
-        after: "",
+        after: `    prepStages,
+    providerThinkingLevel,
+`,
       },
       {
         label: "remove Ultra orchestration prompt input",
-        before: `        proactiveSubagentOrchestration,
+        before: `        modelToolsEnabled: toolsEnabled,
+        proactiveSubagentOrchestration,
+        sandbox: sandbox ?? undefined,
 `,
-        after: "",
+        after: `        modelToolsEnabled: toolsEnabled,
+        sandbox: sandbox ?? undefined,
+`,
       },
     ],
   },
@@ -93,10 +101,7 @@ const targets = [
 
 function gitBlobSha(text) {
   const bytes = Buffer.from(text, "utf8");
-  return createHash("sha1")
-    .update(`blob ${bytes.length}\0`)
-    .update(bytes)
-    .digest("hex");
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
 function replaceOnce(source, before, after, label) {

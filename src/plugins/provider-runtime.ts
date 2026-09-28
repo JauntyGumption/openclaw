@@ -6,7 +6,6 @@ import {
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import type { AuthProfileCredential, OAuthCredential } from "../agents/auth-profiles/types.js";
-import { resolveGpt5SystemPromptContribution } from "../agents/gpt5-prompt-overlay.js";
 import { getRegisteredAgentHarness } from "../agents/harness/registry.js";
 import {
   applyPluginTextReplacements,
@@ -201,19 +200,13 @@ export function resolveProviderSystemPromptContribution(params: {
   context: ProviderSystemPromptContributionContext;
 }): ProviderSystemPromptContribution | undefined {
   const plugin = ensureProviderRuntimePluginHandle(params).plugin;
-  const baseOverlay = resolveGpt5SystemPromptContribution({
-    config: params.context.config ?? params.config,
-    providerId: params.context.provider ?? params.provider,
-    modelId: params.context.modelId,
-    trigger: params.context.trigger,
-  });
   const providerOverlay =
     plugin?.resolvePromptOverlay?.({
       ...params.context,
-      baseOverlay,
+      baseOverlay: undefined,
     }) ?? undefined;
   return mergeProviderSystemPromptContributions(
-    mergeProviderSystemPromptContributions(baseOverlay, providerOverlay),
+    providerOverlay,
     plugin?.resolveSystemPromptContribution?.(params.context) ?? undefined,
   );
 }

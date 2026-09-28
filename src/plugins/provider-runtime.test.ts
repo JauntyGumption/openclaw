@@ -1484,55 +1484,35 @@ describe("provider-runtime", () => {
     });
   });
 
-  it("applies the shared GPT-5 prompt overlay for any provider", () => {
+  it("does not inject a shared GPT-5 prompt overlay for any provider", () => {
     const contribution = resolveProviderSystemPromptContribution({
       provider: "openrouter",
-      context: {
+      runtimeHandle: {
         provider: "openrouter",
-        modelId: "openai/gpt-5.4",
-        promptMode: "full",
-      } as never,
-    });
-
-    expect(contribution?.stablePrefix).toContain("<persona_latch>");
-    expect(contribution?.sectionOverrides?.interaction_style).toContain(
-      "Live chat: short, natural, human.",
-    );
-    expect(contribution?.sectionOverrides?.interaction_style).not.toContain(
-      "Heartbeat = useful proactive progress",
-    );
-  });
-
-  it("keeps scheduled heartbeat guidance out of shared GPT-5 provider overlays", () => {
-    const contribution = resolveProviderSystemPromptContribution({
-      provider: "openrouter",
-      context: {
-        provider: "openrouter",
-        modelId: "openai/gpt-5.4",
-        promptMode: "full",
-        trigger: "heartbeat",
-      } as never,
-    });
-
-    expect(contribution?.sectionOverrides?.interaction_style).not.toContain(
-      "Heartbeat = useful proactive progress",
-    );
-  });
-
-  it("lets provider-owned prompt overlays compose after the built-in GPT-5 overlay", () => {
-    const resolvePromptOverlay = vi.fn((ctx) => ({
-      stablePrefix: "provider overlay",
-      sectionOverrides: {
-        execution_bias: ctx.baseOverlay?.stablePrefix ? "saw built-in overlay" : "missing",
+        plugin: undefined,
       },
+      context: {
+        provider: "openrouter",
+        modelId: "openai/gpt-5.4",
+        promptMode: "full",
+        trigger: "user",
+      } as never,
+    });
+
+    expect(contribution).toBeUndefined();
+  });
+
+  it("passes no shared GPT-5 base overlay into provider-owned prompt hooks", () => {
+    const resolvePromptOverlay = vi.fn((context: { baseOverlay?: unknown }) => ({
+      stablePrefix: context.baseOverlay ? "unexpected shared overlay" : "provider-owned overlay",
     }));
-    resolvePluginProvidersMock.mockReturnValue([
+    registerLoadedProviders([
       {
         id: "openrouter",
         label: "OpenRouter",
         auth: [],
         resolvePromptOverlay,
-      } satisfies ProviderPlugin,
+      } as ProviderPlugin,
     ]);
 
     const contribution = resolveProviderSystemPromptContribution({
@@ -1541,83 +1521,13 @@ describe("provider-runtime", () => {
         provider: "openrouter",
         modelId: "openai/gpt-5.4",
         promptMode: "full",
+        trigger: "user",
       } as never,
     });
 
-    expect(contribution?.stablePrefix).toContain("<persona_latch>");
-    expect(contribution?.stablePrefix).toContain("provider overlay");
-    expect(contribution?.sectionOverrides?.execution_bias).toBe("saw built-in overlay");
-    const overlayContext = requireRecord(firstMockArg(resolvePromptOverlay), "overlay context");
-    expect(overlayContext.provider).toBe("openrouter");
-    expect(overlayContext.modelId).toBe("openai/gpt-5.4");
-    expect(
-      String(requireRecord(overlayContext.baseOverlay, "base overlay").stablePrefix),
-    ).toContain("<persona_latch>");
-  });
-
-  it("ignores OpenAI plugin personality fallback for non-OpenAI GPT-5 providers", () => {
-    const contribution = resolveProviderSystemPromptContribution({
-      provider: "openrouter",
-      config: {
-        plugins: {
-          entries: {
-            openai: { config: { personality: "off" } },
-          },
-        },
-      },
-      context: {
-        provider: "openrouter",
-        modelId: "openai/gpt-5.4",
-        promptMode: "full",
-      } as never,
-    });
-
-    expect(contribution?.stablePrefix).toContain("<persona_latch>");
-    expect(contribution?.sectionOverrides?.interaction_style).toContain(
-      "Live chat: short, natural, human.",
-    );
-  });
-
-  it("keeps OpenAI plugin personality fallback for OpenAI-family GPT-5 providers", () => {
-    const contribution = resolveProviderSystemPromptContribution({
-      provider: "openai",
-      config: {
-        plugins: {
-          entries: {
-            openai: { config: { personality: "off" } },
-          },
-        },
-      },
-      context: {
-        provider: "openai",
-        modelId: "gpt-5.4",
-        promptMode: "full",
-      } as never,
-    });
-
-    expect(contribution?.stablePrefix).toContain("<persona_latch>");
-    expect(contribution?.sectionOverrides).toStrictEqual({});
-  });
-
-  it("keeps OpenAI plugin personality fallback for Azure OpenAI GPT-5 providers", () => {
-    const contribution = resolveProviderSystemPromptContribution({
-      provider: "azure-openai-responses",
-      config: {
-        plugins: {
-          entries: {
-            openai: { config: { personality: "off" } },
-          },
-        },
-      },
-      context: {
-        provider: "azure-openai-responses",
-        modelId: "gpt-5.4",
-        promptMode: "full",
-      } as never,
-    });
-
-    expect(contribution?.stablePrefix).toContain("<persona_latch>");
-    expect(contribution?.sectionOverrides).toStrictEqual({});
+    expect(contribution?.stablePrefix).toBe("provider-owned overlay");
+    expect(resolvePromptOverlay).toHaveBeenCalledTimes(1);
+    expect(firstMockArg(resolvePromptOverlay)).toMatchObject({ baseOverlay: undefined });
   });
 
   it("does not apply the shared GPT-5 prompt overlay to non-GPT-5 models", () => {

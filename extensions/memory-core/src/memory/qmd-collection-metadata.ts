@@ -34,12 +34,16 @@ export function parseListedQmdCollections(output: string): Map<string, ListedQmd
         if (!entry || typeof entry !== "object") {
           continue;
         }
+        // SAFETY: entry passed the non-null object guard; the optional property remains unknown.
         const name = (entry as { name?: unknown }).name;
         if (typeof name !== "string") {
           continue;
         }
+        // SAFETY: entry passed the non-null object guard; the optional property remains unknown.
         const listedPath = (entry as { path?: unknown }).path;
+        // SAFETY: entry passed the non-null object guard; the optional property remains unknown.
         const listedPattern = (entry as { pattern?: unknown }).pattern;
+        // SAFETY: entry passed the non-null object guard; the optional property remains unknown.
         const listedMask = (entry as { mask?: unknown }).mask;
         listed.set(name, {
           path: typeof listedPath === "string" ? listedPath : undefined,

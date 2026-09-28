@@ -295,6 +295,7 @@ async function writeQmdRuntimeCache<T extends QmdRuntimeCacheEntryBase>(params: 
         expiresAtMs: createdAtMs + params.ttlMs,
         keyHash: params.keyHash,
         ...params.payload,
+        // SAFETY: payload omits every base key, so these base fields plus payload reconstruct T.
       } as T,
       { ttlMs: params.ttlMs },
     );

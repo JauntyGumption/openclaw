@@ -8,10 +8,7 @@ const EXPECTED_BLOB_SHA = "f4069d2272d474b8ad0dd1405ad25c22b0f3e0a5";
 
 function gitBlobSha(text) {
   const bytes = Buffer.from(text, "utf8");
-  return createHash("sha1")
-    .update(`blob ${bytes.length}\0`)
-    .update(bytes)
-    .digest("hex");
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
 function replaceCount(source, before, after, expectedCount, label) {

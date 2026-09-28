@@ -8,10 +8,7 @@ const EXPECTED_BLOB_SHA = "f2371fa94c7d5938c55271d62a0babab84ebf0a1";
 
 function gitBlobSha(text) {
   const bytes = Buffer.from(text, "utf8");
-  return createHash("sha1")
-    .update(`blob ${bytes.length}\0`)
-    .update(bytes)
-    .digest("hex");
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
 function replaceOnce(source, before, after, label) {
@@ -87,8 +84,10 @@ const replacements = [
   },
   {
     label: "runtime identity in none mode",
-    before: `    return ["You are a personal assistant running inside OpenClaw.", modelIdentityLine]`,
-    after: `    return ["Runtime: OpenClaw.", modelIdentityLine]`,
+    before: `    return ["You are a personal assistant running inside OpenClaw.", modelIdentityLine]
+      .filter(Boolean)
+      .join("\\n");`,
+    after: `    return ["Runtime: OpenClaw.", modelIdentityLine].filter(Boolean).join("\\n");`,
   },
   {
     label: "descriptive primary workspace",
@@ -142,9 +141,15 @@ const replacements = [
             ...(hasAutomations
               ? [
                   \`Same job asked a 3rd time: do it, then offer a routine. Check \\\`\${resolveToolName(AUTOMATIONS_TOOL_NAME)}\\\` list first; never duplicate one.\`,
-                  "Promote = restate schedule+task plainly, get a yes, create it (delivery defaults here), then force `run` once as a visible test; failed test => say so and remove it.",
+                  "Promote = restate schedule+task plainly, get a yes, create it (delivery defaults here), then force \`run\` once as a visible test; failed test => say so and remove it.",
                 ]
               : []),
+`,
+    after: "",
+  },
+  {
+    label: "remove obsolete automation-promotion gate",
+    before: `  const hasAutomations = availableTools.has(AUTOMATIONS_TOOL_NAME);
 `,
     after: "",
   },
@@ -240,7 +245,10 @@ for (const replacement of replacements) {
   text = replaceOnce(text, replacement.before, replacement.after, replacement.label);
 }
 
-if (text.includes("Same job asked a 3rd time") || text.includes("Promote = restate schedule+task plainly")) {
+if (
+  text.includes("Same job asked a 3rd time") ||
+  text.includes("Promote = restate schedule+task plainly")
+) {
   throw new Error("ambient automation promotion survived the system prompt repair");
 }
 if (
@@ -252,8 +260,12 @@ if (
 }
 
 if (process.argv.includes("--check")) {
-  console.log(`Patch applies cleanly to ${targetPath} (${replacements.length} guarded replacements).`);
+  console.log(
+    `Patch applies cleanly to ${targetPath} (${replacements.length} guarded replacements).`,
+  );
 } else {
   await writeFile(targetPath, text, "utf8");
-  console.log(`Patched ${targetPath} with ${replacements.length} guarded Vesper runtime replacements.`);
+  console.log(
+    `Patched ${targetPath} with ${replacements.length} guarded Vesper runtime replacements.`,
+  );
 }

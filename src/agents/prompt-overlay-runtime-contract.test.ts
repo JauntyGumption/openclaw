@@ -1,110 +1,80 @@
 /**
- * Runtime contract coverage for deprecated GPT-5 prompt overlays.
- * Keeps provider-owned overlay compatibility aligned with SDK fixture inputs.
+ * Runtime contract coverage for the deprecated GPT-5 prompt overlay shim.
+ * All compatibility inputs must fail closed without adding prompt text.
  */
 import {
+  CODEX_CONTRACT_PROVIDER_ID,
   GPT5_CONTRACT_MODEL_ID,
   GPT5_PREFIXED_CONTRACT_MODEL_ID,
   NON_GPT5_CONTRACT_MODEL_ID,
   NON_OPENAI_CONTRACT_PROVIDER_ID,
-  CODEX_CONTRACT_PROVIDER_ID,
   OPENAI_CONTRACT_PROVIDER_ID,
   openAiPluginPersonalityConfig,
   sharedGpt5PersonalityConfig,
 } from "openclaw/plugin-sdk/agent-runtime-test-contracts";
 import { describe, expect, it } from "vitest";
-import { resolveGpt5SystemPromptContribution } from "./gpt5-prompt-overlay.js";
+import {
+  GPT5_BEHAVIOR_CONTRACT,
+  GPT5_FRIENDLY_CHAT_PROMPT_OVERLAY,
+  GPT5_FRIENDLY_PROMPT_OVERLAY,
+  GPT5_HEARTBEAT_PROMPT_OVERLAY,
+  resolveGpt5SystemPromptContribution,
+} from "./gpt5-prompt-overlay.js";
 
 describe("GPT-5 prompt overlay runtime contract", () => {
-  it("adds the behavior contract and friendly style to OpenAI-family GPT-5 models by default", () => {
-    const contribution = resolveGpt5SystemPromptContribution({
-      providerId: OPENAI_CONTRACT_PROVIDER_ID,
-      modelId: GPT5_CONTRACT_MODEL_ID,
-    });
-
-    expect(contribution?.stablePrefix).toContain("<persona_latch>");
-    expect(contribution?.sectionOverrides?.interaction_style).toContain(
-      "Live chat: short, natural, human.",
-    );
-    expect(contribution?.sectionOverrides?.interaction_style).not.toContain(
-      "Heartbeat = useful proactive progress",
-    );
+  it("keeps deprecated prompt payload exports empty", () => {
+    expect(GPT5_BEHAVIOR_CONTRACT).toBe("");
+    expect(GPT5_FRIENDLY_CHAT_PROMPT_OVERLAY).toBe("");
+    expect(GPT5_FRIENDLY_PROMPT_OVERLAY).toBe("");
+    expect(GPT5_HEARTBEAT_PROMPT_OVERLAY).toBe("");
   });
 
-  it("does not automatically add heartbeat philosophy to scheduled GPT-5 turns", () => {
-    const contribution = resolveGpt5SystemPromptContribution({
-      providerId: OPENAI_CONTRACT_PROVIDER_ID,
-      modelId: GPT5_CONTRACT_MODEL_ID,
-      trigger: "heartbeat",
-    });
-
-    expect(contribution?.sectionOverrides?.interaction_style).not.toContain(
-      "Heartbeat = useful proactive progress",
-    );
-  });
-
-  it("preserves explicit heartbeat guidance for existing plugin SDK consumers", () => {
-    const contribution = resolveGpt5SystemPromptContribution({
-      providerId: OPENAI_CONTRACT_PROVIDER_ID,
-      modelId: GPT5_CONTRACT_MODEL_ID,
-      includeHeartbeatGuidance: true,
-    });
-
-    expect(contribution?.sectionOverrides?.interaction_style).toContain(
-      "Heartbeat = useful proactive progress",
-    );
-  });
-
-  it("ignores the retired shared overlay switch and keeps friendly style", () => {
-    const contribution = resolveGpt5SystemPromptContribution({
-      providerId: NON_OPENAI_CONTRACT_PROVIDER_ID,
-      modelId: GPT5_PREFIXED_CONTRACT_MODEL_ID,
-      config: sharedGpt5PersonalityConfig("off"),
-    });
-
-    expect(contribution?.stablePrefix).toContain("<persona_latch>");
-    expect(contribution?.sectionOverrides?.interaction_style).toContain(
-      "Live chat: short, natural, human.",
-    );
-  });
-
-  it("scopes OpenAI plugin personality fallback to OpenAI-family GPT-5 providers", () => {
-    const openAiContribution = resolveGpt5SystemPromptContribution({
-      providerId: OPENAI_CONTRACT_PROVIDER_ID,
-      modelId: GPT5_CONTRACT_MODEL_ID,
-      config: openAiPluginPersonalityConfig("off"),
-    });
-    const nonOpenAiContribution = resolveGpt5SystemPromptContribution({
-      providerId: NON_OPENAI_CONTRACT_PROVIDER_ID,
-      modelId: GPT5_PREFIXED_CONTRACT_MODEL_ID,
-      config: openAiPluginPersonalityConfig("off"),
-    });
-
-    expect(openAiContribution?.stablePrefix).toContain("<persona_latch>");
-    expect(openAiContribution?.sectionOverrides).toStrictEqual({});
-    expect(nonOpenAiContribution?.stablePrefix).toContain("<persona_latch>");
-    expect(nonOpenAiContribution?.sectionOverrides?.interaction_style).toContain(
-      "Live chat: short, natural, human.",
-    );
-  });
-
-  it("keeps Codex virtual providers in the OpenAI-family personality fallback scope", () => {
-    const contribution = resolveGpt5SystemPromptContribution({
-      providerId: CODEX_CONTRACT_PROVIDER_ID,
-      modelId: GPT5_CONTRACT_MODEL_ID,
-      config: openAiPluginPersonalityConfig("off"),
-    });
-
-    expect(contribution?.stablePrefix).toContain("<persona_latch>");
-    expect(contribution?.sectionOverrides).toStrictEqual({});
-  });
-
-  it("does not apply GPT-5 overlays to non-GPT-5 models", () => {
-    expect(
-      resolveGpt5SystemPromptContribution({
+  it.each([
+    {
+      name: "default OpenAI GPT-5 route",
+      params: { providerId: OPENAI_CONTRACT_PROVIDER_ID, modelId: GPT5_CONTRACT_MODEL_ID },
+    },
+    {
+      name: "heartbeat guidance request",
+      params: {
+        providerId: OPENAI_CONTRACT_PROVIDER_ID,
+        modelId: GPT5_CONTRACT_MODEL_ID,
+        trigger: "heartbeat" as const,
+        includeHeartbeatGuidance: true,
+      },
+    },
+    {
+      name: "retired shared personality switch",
+      params: {
+        providerId: NON_OPENAI_CONTRACT_PROVIDER_ID,
+        modelId: GPT5_PREFIXED_CONTRACT_MODEL_ID,
+        config: sharedGpt5PersonalityConfig("off"),
+      },
+    },
+    {
+      name: "OpenAI plugin personality fallback",
+      params: {
+        providerId: OPENAI_CONTRACT_PROVIDER_ID,
+        modelId: GPT5_CONTRACT_MODEL_ID,
+        config: openAiPluginPersonalityConfig("friendly"),
+      },
+    },
+    {
+      name: "Codex virtual provider",
+      params: {
+        providerId: CODEX_CONTRACT_PROVIDER_ID,
+        modelId: GPT5_CONTRACT_MODEL_ID,
+        config: openAiPluginPersonalityConfig("on"),
+      },
+    },
+    {
+      name: "non-GPT-5 model",
+      params: {
         providerId: OPENAI_CONTRACT_PROVIDER_ID,
         modelId: NON_GPT5_CONTRACT_MODEL_ID,
-      }),
-    ).toBeUndefined();
+      },
+    },
+  ])("returns no contribution for $name", ({ params }) => {
+    expect(resolveGpt5SystemPromptContribution(params)).toBeUndefined();
   });
 });

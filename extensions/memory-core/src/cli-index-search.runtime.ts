@@ -1,6 +1,5 @@
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { resolveMemorySearchStaleness } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import {
@@ -73,6 +72,7 @@ async function summarizeQmdIndexArtifact(manager: MemoryManager): Promise<string
   try {
     stat = await fs.stat(dbPath);
   } catch (err) {
+    // SAFETY: node:fs promise rejections use ErrnoException; only its optional code is read.
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
       throw new Error(`QMD index file not found: ${shortenHomePath(dbPath)}`, { cause: err });

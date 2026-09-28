@@ -99,6 +99,7 @@ function parseQmdQueryResultArray(raw: string): QmdQueryResult[] | null {
       return null;
     }
     return parsed.map((item) => {
+      // SAFETY: item passed the non-null, non-array object guard; all fields remain unknown.
       const record = item as Record<string, unknown>;
       const docid = typeof record.docid === "string" ? record.docid : undefined;
       const score =
@@ -118,6 +119,7 @@ function parseQmdQueryResultArray(raw: string): QmdQueryResult[] | null {
         body,
         startLine: parseQmdLineNumber(record.start_line ?? record.startLine),
         endLine: parseQmdLineNumber(record.end_line ?? record.endLine),
+        // SAFETY: Every constructed field was normalized to QmdQueryResult's optional primitive types.
       } as QmdQueryResult;
     });
   } catch {

@@ -21,7 +21,6 @@ import { registerMemoryCapability } from "openclaw/plugin-sdk/memory-core-host-r
 import { MESSAGE_TOOL_DELIVERY_HINTS } from "openclaw/plugin-sdk/message-tool-delivery-hints";
 import { registerPluginCommand } from "openclaw/plugin-sdk/plugin-runtime";
 import { createMockPluginRegistry } from "openclaw/plugin-sdk/plugin-test-runtime";
-import { GPT5_BEHAVIOR_CONTRACT as CODEX_GPT5_BEHAVIOR_CONTRACT } from "openclaw/plugin-sdk/provider-model-shared";
 import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import {
   appendSessionTranscriptMessageByIdentity,
@@ -4667,9 +4666,9 @@ describe("runCodexAppServerAttempt", () => {
     ]);
   });
   it.each([
-    { name: "non-empty legacy HEARTBEAT.md", contents: "Heartbeat checklist goes here." },
-    { name: "empty legacy HEARTBEAT.md", contents: "\n\n" },
-  ])("keeps $name out of Codex heartbeat context", async ({ contents }) => {
+    { name: "authored HEARTBEAT.md", contents: "Heartbeat checklist goes here." },
+    { name: "empty HEARTBEAT.md", contents: "\n\n" },
+  ])("routes $name through Codex heartbeat turn context", async ({ contents }) => {
     const { sessionFile, workspaceDir } = createRunPaths();
     const heartbeatPath = path.join(workspaceDir, "HEARTBEAT.md");
     await fs.mkdir(workspaceDir, { recursive: true });
@@ -4702,11 +4701,11 @@ describe("runCodexAppServerAttempt", () => {
     expect(collaborationInstructions).not.toContain("This is an OpenClaw heartbeat turn");
     expect(collaborationInstructions).not.toContain("HEARTBEAT.md exists");
     expect(collaborationInstructions).not.toContain(heartbeatPath);
-    const legacyContent = contents.trim();
-    if (legacyContent) {
-      expect(threadStartParams.developerInstructions ?? "").not.toContain(legacyContent);
-      expect(turnStartParams.input?.[0]?.text ?? "").not.toContain(legacyContent);
-      expect(collaborationInstructions).not.toContain(legacyContent);
+    const authoredContent = contents.trim();
+    if (authoredContent) {
+      expect(threadStartParams.developerInstructions ?? "").not.toContain(authoredContent);
+      expect(turnStartParams.input?.[0]?.text ?? "").toContain(authoredContent);
+      expect(collaborationInstructions).not.toContain(authoredContent);
     }
   });
   it("keeps lightweight cron Codex turns out of OpenClaw bootstrap context", async () => {
@@ -6264,7 +6263,7 @@ describe("runCodexAppServerAttempt", () => {
     });
     const resumeRequest = requests.find((request) => request.method === "thread/resume");
     const resumeRequestParams = resumeRequest?.params as Record<string, unknown> | undefined;
-    expect(resumeRequestParams?.developerInstructions).not.toContain(CODEX_GPT5_BEHAVIOR_CONTRACT);
+    expect(resumeRequestParams?.developerInstructions).not.toContain("<persona_latch>");
   });
   it("sends the current recorded sender on successive turns of one resumed Codex thread", async () => {
     const { sessionFile, workspaceDir } = createRunPaths();
@@ -6775,7 +6774,7 @@ describe("runCodexAppServerAttempt", () => {
     expect(resumeConfig?.["features.code_mode"]).toBe(true);
     expect(resumeConfig?.["features.code_mode_only"]).toBe(false);
     expect(resumeConfig?.["features.apply_patch_streaming_events"]).toBe(true);
-    expect(resumeRequestParams?.developerInstructions).not.toContain(CODEX_GPT5_BEHAVIOR_CONTRACT);
+    expect(resumeRequestParams?.developerInstructions).not.toContain("<persona_latch>");
     const turnRequest = requests.find((request) => request.method === "turn/start");
     const turnRequestParams = turnRequest?.params as Record<string, unknown> | undefined;
     expect(turnRequestParams?.approvalPolicy).toBe("on-request");

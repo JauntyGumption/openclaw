@@ -1,5 +1,6 @@
 // System prompt report tests cover prompt accounting, bootstrap injection
 // matching, and hash output used to compare prompt/tool parity.
+import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "@openclaw/ai/internal/shared";
 import { describe, expect, it } from "vitest";
 import { buildBootstrapInjectionStats } from "./bootstrap-budget.js";
 import { buildSystemPromptReport } from "./system-prompt-report.js";
@@ -152,6 +153,193 @@ describe("buildSystemPromptReport", () => {
     expect(report.systemPrompt.chars).toBe("custom override".length);
     expect(report.systemPrompt.projectContextChars).toBe(0);
     expect(report.systemPrompt.nonProjectContextChars).toBe("custom override".length);
+  });
+
+  it("stops project-context accounting at the delivery-suppression heading", () => {
+    const file = makeBootstrapFile({ path: "/tmp/workspace/AGENTS.md" });
+    const projectContext = "\n# Project Context\n## AGENTS.md\n\nrendered context\n";
+    const systemPrompt = [
+      "Runtime: OpenClaw.",
+      projectContext,
+      "## Delivery Suppression\nUse NO_REPLY only when an explicit transport or delivery path requires a silent terminal response.",
+      SYSTEM_PROMPT_CACHE_BOUNDARY,
+      "## Temporal Context\nCurrent date: 2026-09-20",
+    ].join("\n");
+    const report = buildSystemPromptReport({
+      source: "run",
+      generatedAt: 0,
+      bootstrapMaxChars: 20_000,
+      systemPrompt,
+      injectedWorkspaceFiles: buildBootstrapInjectionStats({
+        bootstrapFiles: [file],
+        injectedFiles: [{ path: file.path, content: "rendered context" }],
+      }),
+      skillsPrompt: "",
+      tools: [],
+    });
+
+    expect(report.systemPrompt.projectContextChars).toBe(projectContext.length);
+    expect(report.systemPrompt.nonProjectContextChars).toBe(
+      systemPrompt.length - projectContext.length,
+    );
+  });
+
+  it("does not treat a delivery-suppression heading inside a workspace file as the boundary", () => {
+    const file = makeBootstrapFile({ path: "/tmp/workspace/AGENTS.md" });
+    const projectContext =
+      "\n# Project Context\n## AGENTS.md\n\npolicy notes\n## Delivery Suppression\nthis heading is file content\n";
+    const systemPrompt = [
+      "Runtime: OpenClaw.",
+      projectContext,
+      "## Delivery Suppression\nUse NO_REPLY only when an explicit transport or delivery path requires a silent terminal response.",
+      SYSTEM_PROMPT_CACHE_BOUNDARY,
+      "## Runtime\nRuntime: host=test",
+    ].join("\n");
+    const report = buildSystemPromptReport({
+      source: "run",
+      generatedAt: 0,
+      bootstrapMaxChars: 20_000,
+      systemPrompt,
+      injectedWorkspaceFiles: buildBootstrapInjectionStats({
+        bootstrapFiles: [file],
+        injectedFiles: [{ path: file.path, content: "policy notes" }],
+      }),
+      skillsPrompt: "",
+      tools: [],
+    });
+
+    expect(report.systemPrompt.projectContextChars).toBe(projectContext.length);
+  });
+
+  it("does not invent delivery suppression when only workspace content uses that heading", () => {
+    const file = makeBootstrapFile({ path: "/tmp/workspace/AGENTS.md" });
+    const projectContext =
+      "\n# Project Context\n## AGENTS.md\n\npolicy notes\n## Delivery Suppression\nthis heading is file content\n";
+    const systemPrompt = `Runtime: OpenClaw.${projectContext}${SYSTEM_PROMPT_CACHE_BOUNDARY}\n## Runtime\nRuntime: host=test`;
+    const report = buildSystemPromptReport({
+      source: "run",
+      generatedAt: 0,
+      bootstrapMaxChars: 20_000,
+      systemPrompt,
+      injectedWorkspaceFiles: buildBootstrapInjectionStats({
+        bootstrapFiles: [file],
+        injectedFiles: [{ path: file.path, content: "policy notes" }],
+      }),
+      skillsPrompt: "",
+      tools: [],
+    });
+
+    expect(report.systemPrompt.projectContextChars).toBe(projectContext.length);
+  });
+
+  it("uses the cache boundary when delivery suppression is omitted", () => {
+    const file = makeBootstrapFile({ path: "/tmp/workspace/AGENTS.md" });
+    const projectContext = "\n# Project Context\n## AGENTS.md\n\nrendered context\n";
+    const systemPrompt = `Runtime: OpenClaw.${projectContext}${SYSTEM_PROMPT_CACHE_BOUNDARY}\n## Temporal Context`;
+    const report = buildSystemPromptReport({
+      source: "run",
+      generatedAt: 0,
+      bootstrapMaxChars: 20_000,
+      systemPrompt,
+      injectedWorkspaceFiles: buildBootstrapInjectionStats({
+        bootstrapFiles: [file],
+        injectedFiles: [{ path: file.path, content: "rendered context" }],
+      }),
+      skillsPrompt: "",
+      tools: [],
+    });
+
+    expect(report.systemPrompt.projectContextChars).toBe(projectContext.length);
+  });
+
+  it("counts stable and dynamic project context on both sides of the cache boundary", () => {
+    const file = makeBootstrapFile({ path: "/tmp/workspace/AGENTS.md" });
+    const stableContext = "\n# Project Context\n## AGENTS.md\n\nrendered context\n";
+    const dynamicContext =
+      "\n# Dynamic Project Context\nFrequently changing workspace guidance:\n## HEARTBEAT.md\n\ncheck inbox\n";
+    const systemPrompt = `Runtime: OpenClaw.${stableContext}${SYSTEM_PROMPT_CACHE_BOUNDARY}${dynamicContext}\n## Temporal Context\nCurrent date: 2026-09-20`;
+    const report = buildSystemPromptReport({
+      source: "run",
+      generatedAt: 0,
+      bootstrapMaxChars: 20_000,
+      systemPrompt,
+      injectedWorkspaceFiles: buildBootstrapInjectionStats({
+        bootstrapFiles: [file],
+        injectedFiles: [{ path: file.path, content: "rendered context" }],
+      }),
+      skillsPrompt: "",
+      tools: [],
+    });
+
+    expect(report.systemPrompt.projectContextChars).toBe(
+      stableContext.length + dynamicContext.length,
+    );
+  });
+
+  it("does not treat a runtime heading inside dynamic workspace content as the boundary", () => {
+    const file = makeBootstrapFile({ path: "/tmp/workspace/HEARTBEAT.md" });
+    const dynamicContext =
+      "\n# Project Context\nFrequently changing workspace guidance:\n\n## HEARTBEAT.md\n\nnotes\n## Runtime\nthis heading is file content\n";
+    const systemPrompt = `Runtime: OpenClaw.${SYSTEM_PROMPT_CACHE_BOUNDARY}${dynamicContext}\n## Temporal Context\nCurrent date: 2026-09-21\nTime zone: UTC\n## Runtime\nRuntime: host=test`;
+    const report = buildSystemPromptReport({
+      source: "run",
+      generatedAt: 0,
+      bootstrapMaxChars: 20_000,
+      systemPrompt,
+      injectedWorkspaceFiles: buildBootstrapInjectionStats({
+        bootstrapFiles: [file],
+        injectedFiles: [{ path: file.path, content: "notes" }],
+      }),
+      skillsPrompt: "",
+      tools: [],
+    });
+
+    expect(report.systemPrompt.projectContextChars).toBe(dynamicContext.length);
+  });
+
+  it("does not treat another prompt heading inside dynamic workspace content as the boundary", () => {
+    const file = makeBootstrapFile({ path: "/tmp/workspace/HEARTBEAT.md" });
+    const dynamicContext =
+      "\n# Dynamic Project Context\nFrequently changing workspace guidance:\n## HEARTBEAT.md\n\nnotes\n## Authorized Senders\nthis heading is file content\n";
+    const systemPrompt = `Runtime: OpenClaw.${SYSTEM_PROMPT_CACHE_BOUNDARY}${dynamicContext}\n## Temporal Context\nCurrent date: 2026-09-21`;
+    const report = buildSystemPromptReport({
+      source: "run",
+      generatedAt: 0,
+      bootstrapMaxChars: 20_000,
+      systemPrompt,
+      injectedWorkspaceFiles: buildBootstrapInjectionStats({
+        bootstrapFiles: [file],
+        injectedFiles: [{ path: file.path, content: "notes" }],
+      }),
+      skillsPrompt: "",
+      tools: [],
+    });
+
+    expect(report.systemPrompt.projectContextChars).toBe(dynamicContext.length);
+  });
+
+  it("stops dynamic-only project context before approval guidance", () => {
+    const file = makeBootstrapFile({ path: "/tmp/workspace/HEARTBEAT.md" });
+    const dynamicContext =
+      "\n# Project Context\nFrequently changing workspace guidance:\n## HEARTBEAT.md\n\ncheck inbox\n";
+    const systemPrompt = `Runtime: OpenClaw.${SYSTEM_PROMPT_CACHE_BOUNDARY}${dynamicContext}\nexec approval-pending: use native UI.\n## Runtime\nRuntime details`;
+    const report = buildSystemPromptReport({
+      source: "run",
+      generatedAt: 0,
+      bootstrapMaxChars: 20_000,
+      systemPrompt,
+      injectedWorkspaceFiles: buildBootstrapInjectionStats({
+        bootstrapFiles: [file],
+        injectedFiles: [{ path: file.path, content: "check inbox" }],
+      }),
+      skillsPrompt: "",
+      tools: [],
+    });
+
+    expect(report.systemPrompt.projectContextChars).toBe(dynamicContext.length);
+    expect(report.systemPrompt.nonProjectContextChars).toBe(
+      systemPrompt.length - dynamicContext.length,
+    );
   });
 
   it("emits content hashes for prompt and tool parity checks", () => {

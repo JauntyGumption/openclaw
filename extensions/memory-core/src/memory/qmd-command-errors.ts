@@ -82,6 +82,7 @@ function isQmdCliCommandError(err: unknown): err is {
   if (!(err instanceof Error)) {
     return false;
   }
+  // SAFETY: err is an object after the Error guard; every optional field is validated below.
   const candidate = err as {
     code?: unknown;
     signal?: unknown;

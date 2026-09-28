@@ -59,6 +59,22 @@ describe("prepareEmbeddedAttemptSetup", () => {
     expect(setup.sessionAgentId).toBe("marketing");
   });
 
+  it("does not turn ultra thinking into proactive subagent orchestration", async () => {
+    const setup = await prepareEmbeddedAttemptSetup({
+      config: {},
+      modelId: "gpt-5.4",
+      provider: "openai",
+      runId: "run-ultra-no-forced-delegation",
+      sessionId: "session-ultra-no-forced-delegation",
+      sessionKey: "agent:main:main",
+      thinkLevel: "ultra",
+      timeoutMs: 30_000,
+      workspaceDir: path.join(os.tmpdir(), "openclaw-attempt-ultra-no-forced-delegation"),
+    } as unknown as EmbeddedRunAttemptParams);
+
+    expect(setup).not.toHaveProperty("proactiveSubagentOrchestration");
+  });
+
   it.each(
     [undefined, "global", "agent:main:policy"].flatMap((sandboxSessionKey) =>
       [false, true].map((detached) => ({ sandboxSessionKey, detached })),

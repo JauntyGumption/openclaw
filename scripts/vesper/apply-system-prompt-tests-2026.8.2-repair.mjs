@@ -10,10 +10,7 @@ const EXPECTED_TEST_BLOB_SHA = "80fcf9f6bab20d5ab81bef4f566bead5aaf8dced";
 
 function gitBlobSha(text) {
   const bytes = Buffer.from(text, "utf8");
-  return createHash("sha1")
-    .update(`blob ${bytes.length}\0`)
-    .update(bytes)
-    .digest("hex");
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
 function replaceCount(source, before, after, expectedCount, label) {
@@ -210,7 +207,13 @@ const replacements = [
 ];
 
 for (const replacement of replacements) {
-  text = replaceCount(text, replacement.before, replacement.after, replacement.count, replacement.label);
+  text = replaceCount(
+    text,
+    replacement.before,
+    replacement.after,
+    replacement.count,
+    replacement.label,
+  );
 }
 
 text = removeRange(
@@ -306,7 +309,9 @@ describe("Vesper system prompt invariants", () => {
 `;
 
 if (process.argv.includes("--check")) {
-  console.log(`Test migration applies cleanly to ${testPath} (${replacements.length} guarded replacements).`);
+  console.log(
+    `Test migration applies cleanly to ${testPath} (${replacements.length} guarded replacements).`,
+  );
 } else {
   try {
     await readFile(invariantPath, "utf8");

@@ -143,6 +143,7 @@ export async function executeMemorySearchToolQuery(params: {
       onDebug: (debug) => runtimeDebug.push(debug),
       [MEMORY_SEARCH_DEADLINE_CONTROL]: params.controlDeadline,
       ...(searchSources ? { sources: searchSources } : {}),
+      // SAFETY: These are valid search options plus the private deadline-control symbol consumed by the wrapper.
     } as NonNullable<Parameters<MemorySearchManager["search"]>[1]> &
       MemorySearchDeadlineControlOptions);
     return { candidates, searchWindow };

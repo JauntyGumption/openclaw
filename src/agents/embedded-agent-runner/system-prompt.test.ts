@@ -155,7 +155,7 @@ describe("buildEmbeddedSystemPrompt", () => {
     expect(prompt).not.toContain("- sessions_spawn: spawn an isolated sub-agent session");
   });
 
-  it("forwards run-scoped proactive orchestration independently of config preference", () => {
+  it("keeps explicit delegation independent of thinking-level orchestration", () => {
     const prompt = buildEmbeddedSystemPrompt({
       config: {
         agents: {
@@ -169,7 +169,6 @@ describe("buildEmbeddedSystemPrompt", () => {
       agentId: "main",
       workspaceDir: "/tmp/openclaw",
       reasoningTagHint: false,
-      proactiveSubagentOrchestration: true,
       runtimeInfo: {
         agentId: "main",
         host: "local",
@@ -184,7 +183,8 @@ describe("buildEmbeddedSystemPrompt", () => {
       userDate: "2026-01-05",
     });
 
-    expect(prompt).toContain("## Proactive Sub-Agent Orchestration");
+    expect(prompt).not.toContain("## Proactive Sub-Agent Orchestration");
+    expect(prompt).not.toContain("Ultra active");
     expect(prompt).not.toContain("Mode: prefer");
   });
 

@@ -76,12 +76,14 @@ export class QmdDocumentResolver {
         .prepare(
           "SELECT collection, path, modified_at FROM documents WHERE hash = ? AND active = 1",
         )
+        // SAFETY: The controlled SELECT projects fields from the owned QMD documents schema.
         .all(normalized) as QmdDocumentRow[];
       if (rows.length === 0) {
         rows = db
           .prepare(
             "SELECT collection, path, modified_at FROM documents WHERE hash LIKE ? AND active = 1",
           )
+          // SAFETY: The controlled SELECT projects fields from the owned QMD documents schema.
           .all(`${normalized}%`) as QmdDocumentRow[];
       }
     } catch (err) {
@@ -231,6 +233,7 @@ export class QmdDocumentResolver {
         .prepare(
           "SELECT path, modified_at FROM documents WHERE collection = ? AND path = ? AND active = 1",
         )
+        // SAFETY: The controlled SELECT projects path text and an opaque timestamp from the owned schema.
         .all(trimmedCollection, exactPath) as Array<{ modified_at?: unknown; path: string }>;
       if (exactRows.length > 0) {
         const exactRow = expectDefined(exactRows.at(0), "single exact QMD document row");
@@ -238,6 +241,7 @@ export class QmdDocumentResolver {
       }
       rows = db
         .prepare("SELECT path, modified_at FROM documents WHERE collection = ? AND active = 1")
+        // SAFETY: The controlled SELECT projects path text and an opaque timestamp from the owned schema.
         .all(trimmedCollection) as Array<{ modified_at?: unknown; path: string }>;
     } catch (err) {
       if (isSqliteBusyError(err)) {
@@ -343,6 +347,7 @@ export class QmdDocumentResolver {
       try {
         const exactRow = this.ensureDb()
           .prepare("SELECT path FROM documents WHERE collection = ? AND active = 1 AND path = ?")
+          // SAFETY: The controlled single-row SELECT returns owned-schema path text or no row.
           .get(collection, collectionRelativePath) as { path: string } | undefined;
         if (
           exactRow &&
@@ -352,6 +357,7 @@ export class QmdDocumentResolver {
         }
         const rows = this.ensureDb()
           .prepare("SELECT path FROM documents WHERE collection = ? AND active = 1")
+          // SAFETY: The controlled SELECT returns path text from the owned QMD documents schema.
           .all(collection) as Array<{ path: string }>;
         const match = rows.find((row) =>
           this.matchesPreferredFileHint(row.path, collectionRelativePath),

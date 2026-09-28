@@ -548,28 +548,11 @@ as shown above. See [CLI backends](/gateway/cli-backends) for operations and
 [building CLI backend plugins](/plugins/cli-backend-plugins) for command,
 session, image, and parser registration.
 
-### OpenAI GPT-5 personality
+### Deprecated OpenAI GPT-5 personality setting
 
-The bundled OpenAI plugin owns the GPT-5 friendly interaction-style setting. Matching GPT-5-family prompts receive the shared behavior contract; `personality` controls only the friendly style layer. Native Codex app-server routes keep Codex-owned base/model instructions instead of this OpenClaw GPT-5 contribution, and OpenClaw disables Codex's built-in personality for native threads.
+OpenClaw no longer injects a shared GPT-5 behavior contract or friendly interaction-style layer. The bundled OpenAI plugin still accepts `plugins.entries.openai.config.personality` values (`"friendly"`, `"on"`, and `"off"`) as deprecated no-ops so existing configurations continue to validate, but the setting does not alter the system prompt.
 
-```json5
-{
-  plugins: {
-    entries: {
-      openai: {
-        config: {
-          personality: "friendly", // friendly | on | off
-        },
-      },
-    },
-  },
-}
-```
-
-- `"friendly"` (default) and `"on"` enable the friendly interaction-style layer.
-- `"off"` disables only the friendly layer; the tagged GPT-5 behavior contract remains enabled.
-
-See [OpenAI GPT-5 prompt contribution](/providers/openai#gpt-5-prompt-contribution) for provider and native Codex behavior.
+Remove the setting from new configurations. See [OpenAI GPT-5 prompt compatibility](/providers/openai#deprecated-gpt-5-prompt-compatibility) for details.
 
 ### `agents.defaults.heartbeat`
 

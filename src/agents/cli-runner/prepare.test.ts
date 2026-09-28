@@ -161,9 +161,6 @@ function createCliBackendConfig(params: TestCliBackendParams = {}): OpenClawConf
   return {};
 }
 
-const SHARED_CHAT_MESSAGE_TOOL_ETIQUETTE =
-  "- Group/channel: stale/joke/light ack/low-value chatter => reaction or silence. Needed reply => `message(action=send)`; final text private.";
-
 function createBundledMessageToolConfig(): OpenClawConfig {
   setCliRunnerPrepareTestDeps({
     getActiveMcpLoopbackRuntime: vi.fn(() => ({
@@ -2253,7 +2250,7 @@ describe("prepareCliRunContext", () => {
     const context = await fixture.prepare({});
 
     expect(context.params.prompt).toBe("latest ask");
-    expect(context.systemPrompt).toContain("You are a personal assistant running inside OpenClaw.");
+    expect(context.systemPrompt).toContain("Runtime: OpenClaw.");
     expect(context.systemPrompt).toContain("Current model identity: test-cli/test-model.");
     expect(context.systemPrompt).not.toContain("hook exploded");
     expect(hookRunner.runBeforePromptBuild).toHaveBeenCalledOnce();
@@ -2529,7 +2526,7 @@ describe("prepareCliRunContext", () => {
         sourceReplyDeliveryMode: "message_tool_only",
       });
 
-      expect(context.systemPrompt).toContain(SHARED_CHAT_MESSAGE_TOOL_ETIQUETTE);
+      expect(context.systemPrompt).not.toContain("Group/channel:");
     },
   );
 
@@ -2582,7 +2579,7 @@ describe("prepareCliRunContext", () => {
     expect(resolveBootstrapContextForRun).toHaveBeenCalledWith(
       expect.objectContaining({ chatType: testCase.expectedChatType }),
     );
-    expect(context.systemPrompt).toContain(SHARED_CHAT_MESSAGE_TOOL_ETIQUETTE);
+    expect(context.systemPrompt).not.toContain("Group/channel:");
   });
 
   it("ignores volatile prompt text when static prompt text matches", async () => {

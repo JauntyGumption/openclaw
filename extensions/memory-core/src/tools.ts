@@ -122,13 +122,13 @@ function resolveActiveMemoryQmdSearchModeOverride(
   const entry = cfg.plugins?.entries?.["active-memory"];
   const entryRecord =
     entry && typeof entry === "object" && !Array.isArray(entry)
-      ? (entry as { config?: unknown })
+      ? (entry as { config?: unknown }) // SAFETY: The object guard holds; config remains unknown.
       : undefined;
   const pluginConfig =
     entryRecord?.config &&
     typeof entryRecord.config === "object" &&
     !Array.isArray(entryRecord.config)
-      ? (entryRecord.config as { qmd?: { searchMode?: unknown } })
+      ? (entryRecord.config as { qmd?: { searchMode?: unknown } }) // SAFETY: The object guard holds; searchMode remains unknown.
       : undefined;
   const searchMode = normalizeActiveMemoryQmdSearchMode(pluginConfig?.qmd?.searchMode);
   return searchMode === "inherit" ? undefined : searchMode;

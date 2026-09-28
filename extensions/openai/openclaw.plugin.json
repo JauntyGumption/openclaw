@@ -287,8 +287,7 @@
       "personality": {
         "type": "string",
         "enum": ["friendly", "on", "off"],
-        "default": "friendly",
-        "description": "Controls the canonical OpenAI-family GPT-5 friendly interaction style. Defaults to `friendly`; `on` aliases `friendly`; `off` removes only the style layer while shared stable behavior remains."
+        "description": "Deprecated no-op retained so existing OpenAI plugin configurations continue to validate. OpenClaw does not inject a GPT-5 behavior or style overlay."
       }
     }
   }

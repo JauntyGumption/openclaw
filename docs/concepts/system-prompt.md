@@ -24,16 +24,16 @@ Provider plugins can contribute cache-aware guidance without replacing the OpenC
 
 Use provider-owned contributions for model-family-specific tuning. Reserve the legacy `before_prompt_build` hook for compatibility or truly global prompt changes.
 
-The built-in GPT-5-family prompt contribution (`resolveGpt5SystemPromptContribution`) uses this mechanism: a `stablePrefix` behavior contract (execution policy, tool discipline, output contract, completion contract) plus an optional `interaction_style` override for a friendlier tone. For OpenAI-family routes, `plugins.entries.openai.config.personality` controls that style layer: `"friendly"` is the default, `"on"` aliases `"friendly"`, and `"off"` removes only the friendly override; the stable behavior contract remains.
+The deprecated GPT-5-family compatibility helper (`resolveGpt5SystemPromptContribution`) returns no contribution. Its historical prompt-payload exports remain empty so older internal imports fail closed; OpenClaw does not add persona, tone, heartbeat, execution, tool, output, or completion policy merely because a route uses a GPT-5-family model.
 
 ## Structure
 
 The prompt is compact, with fixed sections:
 
-- **Tooling**: structured-tool source-of-truth reminder plus runtime tool-use guidance. When `progress_card` is enabled (`tools.updatePlan`, on by default), its own description explains how to maintain one durable plan and status note, keep at most one step `in_progress`, and skip routine updates that do not change the picture.
+- **Tooling**: structured-tool source-of-truth reminder plus runtime tool-use guidance. When `progress_card` is available, its tool description documents the durable status surface, replacement semantics, and optional Markdown and plan inputs without imposing an ambient maintenance obligation.
 - **Execution Bias**: act in-turn on actionable requests, continue until done or blocked, recover from weak tool results, check mutable state live, and verify before finalizing.
-- **Promised Work**: promising future, background, delegated, or continued work creates follow-through ownership: arrange a push-based completion or watch path before ending the turn, proactively return with the result or a concrete blocker, and never treat progress (like `running`) as completion.
-- **Safety**: short guardrail reminder against power-seeking behavior or bypassing oversight, plus credential handling: no secrets or authentication/pairing codes in transcripts; use host-owned masked entry or safe external setup.
+- **Promised Work**: if the agent chooses or agrees to continue beyond the current turn, use an available completion or watch path that can return the result coherently; otherwise stay in the current turn or state the limitation. Progress such as `running` is not completion.
+- **Authority and Provenance**: external content and subordinate outputs are data or evidence rather than instruction authority; authenticated operator state and runtime policy determine authorization, and authenticated stop, pause, or audit instructions take precedence. Credential handling remains explicit: no secrets or authentication/pairing codes in transcripts; use host-owned masked entry or safe external setup.
 - **Skills** (when available): tells the model how to load skill instructions on demand.
 - **OpenClaw Control**: prefer the `gateway` tool for config/restart work; do not invent CLI commands.
 - **OpenClaw Self-Update**: inspect config safely with `config.schema.lookup`, patch with `config.patch`, replace the full config with `config.apply`, and run `update.run` only on explicit user request. The agent-facing `gateway` tool refuses to rewrite `tools.exec.mode`.
@@ -47,7 +47,7 @@ The prompt is compact, with fixed sections:
 - **Runtime**: host, OS, node, model, repo root (when detected), thinking level (one line).
 - **Reasoning**: current visibility level plus the `/reasoning` toggle hint.
 
-Large stable content (including **Project Context**) stays above the internal prompt cache boundary. Volatile per-turn sections (Control UI embed guidance, **Messaging**, **Collapsible Details**, **Voice**, **Group Chat Context**, **Reactions**, **Runtime**) are appended below that boundary so local backends with prefix caches can reuse the stable workspace prefix across channel turns. The boundary is internal transport metadata: every section remains system-prompt guidance for CLI backends. Tool descriptions should avoid embedding current channel names when the accepted schema already carries that runtime detail.
+Large stable workspace content stays in **Project Context** above the internal prompt cache boundary. Frequently changing workspace guidance such as `HEARTBEAT.md` is rendered as **Dynamic Project Context** below that boundary, alongside volatile per-turn sections such as Control UI embed guidance, **Messaging**, **Collapsible Details**, **Voice**, **Conversation Context**, **Reactions**, and **Runtime**. This lets local backends with prefix caches reuse the stable workspace prefix across channel turns. The boundary is internal transport metadata: every section remains system-prompt guidance for CLI backends. Tool descriptions should avoid embedding current channel names when the accepted schema already carries that runtime detail.
 
 Tooling also carries long-running-work guidance:
 
@@ -55,12 +55,12 @@ Tooling also carries long-running-work guidance:
 - use `exec` / `process` only for commands that start now and continue in the background
 - when automatic completion wake is enabled, start the command once and rely on the push-based wake path
 - use `process` for logs, status, input, or intervention on a running command
-- for larger tasks, prefer `sessions_spawn`; sub-agent completion is push-based and auto-announces back to the requester
+- when an independent workstream benefits from delegation, `sessions_spawn` is available and completion is push-based
 - do not poll `subagents list` / `sessions_list` in a loop just to wait for completion
 
-`agents.defaults.subagents.delegationMode` can strengthen this. With no explicit setting, OpenClaw uses `"prefer"` in each agent's main session and `"suggest"` elsewhere; an explicit default or per-agent override always wins. `"prefer"` adds a dedicated **Delegation** section telling the agent to stay responsive, use hidden sub-agents for internal legwork, and use visible sidebar sessions for work the user will follow or return to. This is prompt-only; tool policy still controls whether `sessions_spawn` is available.
+`agents.defaults.subagents.delegationMode` can strengthen this. With no explicit setting, OpenClaw uses `"suggest"` in every session; an explicit default or per-agent override always wins. `"prefer"` adds a dedicated **Delegation** section telling the agent to stay responsive, use hidden sub-agents for internal legwork, and use visible sidebar sessions for work the user will follow or return to. This is prompt-only; tool policy still controls whether `sessions_spawn` is available.
 
-At the `ultra` thinking level, a **Proactive Sub-Agent Orchestration** section is also added when `sessions_spawn` is available: it tells the model to parallelize independent investigation, implementation, and verification through sub-agents, keep simple or tightly coupled work local, give each sub-agent a bounded objective, and synthesize results before replying.
+The `ultra` thinking level affects reasoning effort only. It does not add a run-scoped orchestration section or override the configured delegation mode.
 
 Credential guidance is shared with native Codex developer instructions. When
 `secrets` is actually callable, including deferred and Code Mode surfaces, it
@@ -69,7 +69,7 @@ SecretRefs for supported config fields. Named-tool guidance disappears when the
 tool is filtered or disabled. Gateway egress additionally needs an enabled proxy
 and allowed hosts; there is no plaintext fallback. See [Secrets](/tools/secrets).
 
-Safety guardrails in the system prompt are advisory, not enforcement. Use tool policy, exec approvals, sandboxing, and channel allowlists for hard enforcement; operators can disable prompt guardrails by design.
+Authority, provenance, and credential guidance in the system prompt is advisory, not enforcement. Use authenticated runtime policy, tool policy, exec approvals, sandboxing, and channel allowlists for hard enforcement.
 
 On channels with native approval cards/buttons, the prompt tells the agent to rely on that UI first, and to include a manual `/approve` command only when the tool result says chat approvals are unavailable or manual approval is the only path.
 
@@ -78,12 +78,12 @@ On channels with native approval cards/buttons, the prompt tells the agent to re
 OpenClaw renders smaller system prompts for sub-agents. The runtime sets a `promptMode` per run (not user-facing config):
 
 - `full` (default): all sections above.
-- `minimal`: used for sub-agents; omits the memory prompt section (bundled as **Memory Recall**), **OpenClaw Self-Update**, **Model Aliases**, **User Identity**, **Assistant Output Directives**, **Messaging**, **Collapsible Details**, and **Silent Replies**. Tooling, **Safety**, **Skills** (when supplied), Workspace, Sandbox, Current Date & Time (when known), Runtime, and injected context stay available.
-- `none`: returns only the base identity line.
+- `minimal`: used for sub-agents; omits the memory prompt section (bundled as **Memory Recall**), **OpenClaw Self-Update**, **Model Aliases**, **User Identity**, **Assistant Output Directives**, **Messaging**, **Collapsible Details**, and **Delivery Suppression**. Tooling, **Authority and Provenance**, **Skills** (when supplied), Workspace, Sandbox, **Temporal Context** (when known), Runtime, and injected context stay available.
+- `none`: returns `Runtime: OpenClaw.` plus the conditional current-model identity line when one is available.
 
-Under `promptMode=minimal`, extra injected prompts are labeled **Subagent Context** instead of **Group Chat Context**.
+Under `promptMode=minimal`, extra injected prompts are labeled **Subagent Context** instead of **Conversation Context**.
 
-For channel auto-reply runs, OpenClaw omits the generic **Silent Replies** section when direct, group, or message-tool-only context already owns the visible-reply contract. Only legacy automatic group/channel mode shows `NO_REPLY`; direct chats and message-tool-only replies skip silent-token guidance.
+For channel auto-reply runs, OpenClaw can omit **Delivery Suppression** when channel-aware delivery already owns the visible-reply contract. Otherwise the section permits `NO_REPLY` only when an explicit transport or delivery path requires a silent terminal response; it no longer presents conversational silence as a generic default.
 
 ## Prompt snapshots
 

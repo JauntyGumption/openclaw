@@ -50,7 +50,6 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
   isRawModelRun: boolean;
   markStage: (name: string) => void;
   modelToolsEnabled: boolean;
-  proactiveSubagentOrchestration: boolean;
   sandbox?: SandboxContext;
   sandboxSessionKey: string;
   sessionAgentId: string;
@@ -258,7 +257,6 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
       promptMode: effectivePromptMode,
       sourceReplyDeliveryMode: attempt.sourceReplyDeliveryMode,
       silentReplyPromptMode: attempt.silentReplyPromptMode,
-      proactiveSubagentOrchestration: params.proactiveSubagentOrchestration,
       acpEnabled: isAcpRuntimeSpawnAvailable({
         config: attempt.config,
         sandboxed: sandboxInfo?.enabled === true,

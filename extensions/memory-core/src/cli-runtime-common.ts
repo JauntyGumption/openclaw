@@ -6,10 +6,6 @@ import {
   listAgentIds,
   resolveConfiguredAgentId,
 } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
-import fsSync from "node:fs";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { isUsageCountedSessionTranscriptFileName } from "openclaw/plugin-sdk/memory-core-host-engine-sessions";
 import type { PluginStateLeaseRunner } from "openclaw/plugin-sdk/plugin-state-runtime";
 import { buildAgentSessionKey } from "openclaw/plugin-sdk/routing";
 import { asNullableRecord } from "openclaw/plugin-sdk/string-coerce-runtime";

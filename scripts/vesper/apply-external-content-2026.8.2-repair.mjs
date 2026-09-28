@@ -8,10 +8,7 @@ const EXPECTED_BLOB_SHA = "7784e78e8c1efa7c9484ceb34f4cd31b8ea301c2";
 
 function gitBlobSha(text) {
   const bytes = Buffer.from(text, "utf8");
-  return createHash("sha1")
-    .update(`blob ${bytes.length}\0`)
-    .update(bytes)
-    .digest("hex");
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
 function replaceOnce(source, before, after, label) {

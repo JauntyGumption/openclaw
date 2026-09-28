@@ -248,6 +248,7 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
         .prepare(
           "SELECT collection, COUNT(*) as c FROM documents WHERE active = 1 GROUP BY collection",
         )
+        // SAFETY: The controlled SELECT projects collection text and a bounded numeric COUNT from the owned schema.
         .all() as Array<{ collection: string; c: number }>;
       const bySource = new Map<MemorySource, { files: number; chunks: number }>();
       for (const source of this.sources) {

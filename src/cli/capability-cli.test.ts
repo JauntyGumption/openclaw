@@ -1244,7 +1244,7 @@ describe("capability cli", () => {
     expect(inputs[0]?.mimeType).toBe("image/png");
   });
 
-  it("adds minimal instructions only for openai local model probes", async () => {
+  it("adds descriptive runtime context only for openai local model probes", async () => {
     mocks.prepareSimpleCompletionModelForAgent.mockResolvedValueOnce({
       selection: {
         provider: "openai",
@@ -1267,9 +1267,7 @@ describe("capability cli", () => {
     await runCapability("model", "run", "--model", "openai/gpt-5.5", "--prompt", "hello", "--json");
 
     const call = firstCompletionCall();
-    expect(call?.context?.systemPrompt).toBe(
-      "You are a personal assistant running inside OpenClaw.",
-    );
+    expect(call?.context?.systemPrompt).toBe("Runtime: OpenClaw.");
     expect(call?.context?.messages?.[0]?.role).toBe("user");
     expect(call?.context?.messages?.[0]?.content).toBe("hello");
   });

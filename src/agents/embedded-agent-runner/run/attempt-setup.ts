@@ -168,11 +168,8 @@ export async function resolveAttemptWorkspaceSandbox(params: AttemptWorkspacePar
 }
 
 export async function prepareEmbeddedAttemptSetup(params: EmbeddedRunAttemptParams) {
-  // Ultra is a logical orchestration mode, not a provider effort. Preserve it for
-  // prompt/status surfaces, then lower only at agent-core and provider boundaries.
   const agentCoreThinkingLevel = mapThinkingLevel(params.thinkLevel);
   const providerThinkingLevel = mapThinkingLevelForProvider(params.thinkLevel);
-  const proactiveSubagentOrchestration = params.thinkLevel === "ultra";
   configureEmbeddedAttemptHttpRuntime({ timeoutMs: params.timeoutMs });
 
   log.debug(
@@ -256,7 +253,6 @@ export async function prepareEmbeddedAttemptSetup(params: EmbeddedRunAttemptPara
     getCurrentAttemptPluginMetadataSnapshot,
     getProviderRuntimeHandle,
     prepStages,
-    proactiveSubagentOrchestration,
     providerThinkingLevel,
   };
 }

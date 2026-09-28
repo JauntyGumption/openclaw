@@ -204,14 +204,6 @@ async function writeLegacyCompletedWorkspaceState(workspaceDir: string): Promise
   );
 }
 
-function expectHeartbeatExcludedAndAgentsKept(files: WorkspaceBootstrapFile[]) {
-  // Heartbeat policy can remove HEARTBEAT.md for normal turns, but project rules
-  // must remain in the bootstrap set.
-  const fileNames = files.map((file) => file.name);
-  expect(fileNames).not.toContain("HEARTBEAT.md");
-  expect(fileNames).toContain("AGENTS.md");
-}
-
 describe("resolveBootstrapFilesForRun", () => {
   beforeEach(async () => {
     clearInternalHooks();

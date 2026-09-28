@@ -12,10 +12,7 @@ const EXPECTED_RUNTIME_BLOB_SHA = "5c10ed9f1b32604c2dd85574dce17559587013d0";
 
 function gitBlobSha(text) {
   const bytes = Buffer.from(text, "utf8");
-  return createHash("sha1")
-    .update(`blob ${bytes.length}\0`)
-    .update(bytes)
-    .digest("hex");
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
 function assertBlob(label, text, expected) {
@@ -64,13 +61,19 @@ const OPENAI_FAMILY_GPT5_PROMPT_OVERLAY_PROVIDERS = new Set([
   "azure-openai-responses",
 ]);
 
+/** @deprecated Compatibility-only empty export; GPT-5 prompt overlays are no longer injected. */
 export const GPT5_FRIENDLY_CHAT_PROMPT_OVERLAY = "";
+/** @deprecated Compatibility-only empty export; GPT-5 prompt overlays are no longer injected. */
 export const GPT5_HEARTBEAT_PROMPT_OVERLAY = "";
+/** @deprecated Compatibility-only empty export; GPT-5 prompt overlays are no longer injected. */
 export const GPT5_FRIENDLY_PROMPT_OVERLAY = "";
+/** @deprecated Compatibility-only empty export; GPT-5 prompt overlays are no longer injected. */
 export const GPT5_BEHAVIOR_CONTRACT = "";
 
+/** @deprecated Compatibility-only mode accepted by legacy OpenAI plugin configuration. */
 export type Gpt5PromptOverlayMode = "friendly" | "off";
 
+/** @deprecated Compatibility-only normalization; the resolved mode does not inject prompt text. */
 export function normalizeGpt5PromptOverlayMode(value: unknown): Gpt5PromptOverlayMode | undefined {
   const normalized = normalizeOptionalLowercaseString(value);
   if (normalized === "off") {
@@ -82,6 +85,7 @@ export function normalizeGpt5PromptOverlayMode(value: unknown): Gpt5PromptOverla
   return undefined;
 }
 
+/** @deprecated Compatibility-only resolution; the resolved mode does not inject prompt text. */
 export function resolveGpt5PromptOverlayMode(
   config?: OpenClawConfig,
   legacyPluginConfig?: Record<string, unknown>,
@@ -99,11 +103,13 @@ export function resolveGpt5PromptOverlayMode(
   );
 }
 
+/** @deprecated Compatibility-only model matcher; GPT-5 ids no longer trigger a shared overlay. */
 export function isGpt5ModelId(modelId?: string): boolean {
   const normalized = normalizeOptionalLowercaseString(modelId);
   return normalized ? GPT5_MODEL_ID_PATTERN.test(normalized) : false;
 }
 
+/** @deprecated Compatibility-only no-op; always returns undefined. */
 export function resolveGpt5SystemPromptContribution(_params: {
   config?: OpenClawConfig;
   providerId?: string;
@@ -197,7 +203,9 @@ for (const stale of [
   "Routine calls silent",
 ]) {
   if (overlay.includes(stale)) {
-    throw new Error(`GPT-5 compatibility tombstone still contains behavioral overlay text: ${stale}`);
+    throw new Error(
+      `GPT-5 compatibility tombstone still contains behavioral overlay text: ${stale}`,
+    );
   }
 }
 if (!overlay.includes('GPT5_BEHAVIOR_CONTRACT = ""')) {
@@ -212,5 +220,7 @@ if (process.argv.includes("--check")) {
 } else {
   await writeFile(overlayPath, overlay, "utf8");
   await writeFile(runtimePath, runtime, "utf8");
-  console.log("Removed GPT-5 behavioral overlay payloads and shared injection from the Vesper runtime.");
+  console.log(
+    "Removed GPT-5 behavioral overlay payloads and shared injection from the Vesper runtime.",
+  );
 }

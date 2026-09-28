@@ -5,7 +5,6 @@ import type { AgentSelectOption } from "../../components/agent-select.ts";
 import { renderHubTabs } from "../../components/hub-tabs.ts";
 import {
   renderLearnMoreLink,
-  renderSettingsDefaultDescription,
   renderSettingsDefaultState,
   renderSettingsRow,
   renderSettingsSection,

@@ -97,6 +97,7 @@ function isProcessAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
+    // SAFETY: process.kill failures use ErrnoException; only the optional code is read.
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
@@ -142,6 +143,7 @@ async function restoreHeartbeatTaskClaimNoClobber(
     await fs.link(claimPath, destinationPath);
     await fs.unlink(claimPath);
   } catch (error) {
+    // SAFETY: node:fs promise rejections use ErrnoException; only the optional code is read.
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
       throw error;
     }
@@ -174,6 +176,7 @@ export async function readHeartbeatTaskFile(params: {
   try {
     await fs.lstat(filePath);
   } catch (error) {
+    // SAFETY: node:fs promise rejections use ErrnoException; only the optional code is read.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       throw error;
     }
@@ -230,6 +233,7 @@ export async function archiveHeartbeatTaskFile(
   try {
     await fs.writeFile(archivePath, source.content, { flag: "wx", mode: 0o600 });
   } catch (error) {
+    // SAFETY: node:fs promise rejections use ErrnoException; only the optional code is read.
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
       throw error;
     }
@@ -302,6 +306,7 @@ export async function claimHeartbeatTaskFile(
           mode: sourceStat.mode & 0o777,
         });
       } catch (error) {
+        // SAFETY: node:fs promise rejections use ErrnoException; only the optional code is read.
         if ((error as NodeJS.ErrnoException).code === "EEXIST") {
           const conflictPath = await preserveClaimAsConflict();
           throw new Error(
@@ -335,6 +340,7 @@ export async function claimHeartbeatTaskFile(
       try {
         await fs.rename(claimPath, archivePath);
       } catch (error) {
+        // SAFETY: node:fs promise rejections use ErrnoException; only the optional code is read.
         if ((error as NodeJS.ErrnoException).code !== "EXDEV") {
           throw error;
         }

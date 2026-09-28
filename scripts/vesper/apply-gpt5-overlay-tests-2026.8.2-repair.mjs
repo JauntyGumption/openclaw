@@ -8,10 +8,7 @@ const EXPECTED_TEST_BLOB_SHA = "5307c069b9a9d13fea0019fd66eb58592c9773f5";
 
 function gitBlobSha(text) {
   const bytes = Buffer.from(text, "utf8");
-  return createHash("sha1")
-    .update(`blob ${bytes.length}\0`)
-    .update(bytes)
-    .digest("hex");
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
 function replaceRange(source, startMarker, endMarker, replacement, label) {
@@ -117,7 +114,9 @@ if (!text.includes("passes no shared GPT-5 base overlay into provider-owned prom
 }
 
 if (process.argv.includes("--check")) {
-  console.log("GPT-5 overlay test migration applies cleanly to the exact provider-runtime test blob.");
+  console.log(
+    "GPT-5 overlay test migration applies cleanly to the exact provider-runtime test blob.",
+  );
 } else {
   await writeFile(testPath, text, "utf8");
   console.log("Migrated provider-runtime tests to the Vesper no-shared-GPT5-overlay invariant.");

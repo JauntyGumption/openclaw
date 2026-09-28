@@ -5,6 +5,8 @@
  * injection, skills, and tool schema footprint without storing raw prompt text.
  */
 import { createHash } from "node:crypto";
+import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "@openclaw/ai/internal/shared";
+import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import type { SessionSystemPromptReport } from "../config/sessions/types.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
 import type { BootstrapInjectionStat } from "./bootstrap-budget.types.js";
@@ -24,15 +26,6 @@ const toolSchemaStatsCache = new WeakMap<
 
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
-}
-
-function extractBetween(input: string, startMarker: string, endMarker: string): string {
-  const start = input.indexOf(startMarker);
-  if (start === -1) {
-    return "";
-  }
-  const end = input.indexOf(endMarker, start + startMarker.length);
-  return end === -1 ? input.slice(start) : input.slice(start, end);
 }
 
 function parseSkillBlocks(skillsPrompt: string): Array<{ name: string; blockChars: number }> {
@@ -109,8 +102,74 @@ function buildToolsEntries(tools: AgentTool[]): SessionSystemPromptReport["tools
   });
 }
 
+function measureRenderedSectionChars(params: {
+  input: string;
+  startMarkers: string[];
+  endMarkers: string[];
+  searchStart: number;
+  searchEnd: number;
+}): number {
+  const starts = params.startMarkers
+    .map((marker) => ({ marker, index: params.input.indexOf(marker, params.searchStart) }))
+    .filter((entry) => entry.index >= params.searchStart && entry.index < params.searchEnd)
+    .toSorted((a, b) => a.index - b.index);
+  const start = starts[0];
+  if (!start) {
+    return 0;
+  }
+  const contentStart = start.index + start.marker.length;
+  const end = Math.min(
+    params.searchEnd,
+    ...params.endMarkers
+      // Workspace files are rendered verbatim and may contain section-like
+      // headings. Callers therefore pass complete prompt-owned section openings
+      // where possible, and the last matching opening wins over an earlier copy
+      // inside a file.
+      .map((marker) => params.input.lastIndexOf(marker, params.searchEnd - 1))
+      .filter((index) => index >= contentStart && index <= params.searchEnd),
+  );
+  return Math.max(0, end - start.index);
+}
+
 function measureRenderedProjectContextChars(systemPrompt: string): number {
-  return extractBetween(systemPrompt, "\n# Project Context\n", "\n## Silent Replies\n").length;
+  const boundaryIndex = systemPrompt.indexOf(SYSTEM_PROMPT_CACHE_BOUNDARY);
+  const stableEnd = boundaryIndex === -1 ? systemPrompt.length : boundaryIndex;
+  const stableChars = measureRenderedSectionChars({
+    input: systemPrompt,
+    startMarkers: ["\n# Project Context\n"],
+    endMarkers: [
+      `\n## Delivery Suppression\nUse ${SILENT_REPLY_TOKEN} only when an explicit transport or delivery path requires a silent terminal response.`,
+    ],
+    searchStart: 0,
+    searchEnd: stableEnd,
+  });
+  if (boundaryIndex === -1) {
+    return stableChars;
+  }
+  const dynamicChars = measureRenderedSectionChars({
+    input: systemPrompt,
+    startMarkers: ["\n# Dynamic Project Context\n", "\n# Project Context\n"],
+    endMarkers: [
+      "\n## Temporal Context\nCurrent date: ",
+      "\nexec approval-pending:",
+      "\n## Authorized Senders\nAllowlisted senders: ",
+      "\n## Control UI Embed\n`[embed ...]`:",
+      "\n## Control UI Session Companion\n- Operator has ",
+      "\n## Messaging\n- Current-session final text normally routes to source.",
+      "\n## Messaging\n- Current source visible reply MUST use ",
+      "\n## Messaging\n- Current source visible reply unavailable;",
+      "\n## Collapsible Details\nThis surface renders ",
+      "\n## Voice (TTS)\n",
+      "\n## Conversation Context\n",
+      "\n## Subagent Context\n",
+      "\n## Reactions\n",
+      "\n## Watched Sessions\n",
+      "\n## Runtime\nRuntime: ",
+    ],
+    searchStart: boundaryIndex + SYSTEM_PROMPT_CACHE_BOUNDARY.length,
+    searchEnd: systemPrompt.length,
+  });
+  return stableChars + dynamicChars;
 }
 
 /** Builds the stored report for a rendered system prompt and its inputs. */
