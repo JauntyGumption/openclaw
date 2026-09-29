@@ -75,6 +75,33 @@ env:
   NODE_VERSION: "24.x"
 
 jobs:
+  hydra-stage1-memory-focused:
+    name: hydra-stage1-memory-focused
+    if: github.event_name == 'pull_request' && github.head_ref == 'ci/hydra-stage1-focused-runner'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          cache-mode: restore
+          install-bun: "false"
+
+      - name: Run Hydra Stage 1 focused memory tests
+        run: |
+          pnpm test \
+            extensions/memory-core/src/memory/qmd-manager.test.ts \
+            extensions/memory-core/src/memory/search-manager.test.ts \
+            extensions/memory-core/src/memory/search-manager.fallback.test.ts \
+            packages/memory-host-sdk/src/host/backend-config.test.ts \
+            src/config/config.schema-regressions.test.ts
+
   # Preflight: establish routing truth and job matrices once, then let real
   # work fan out from a single source of truth.
   preflight:
