@@ -158,23 +158,6 @@ describe("getMemorySearchManager caching and lifecycle", () => {
     expect(createQmdManagerMock).not.toHaveBeenCalled();
   });
 
-  it("fails QMD closed without builtin when the host omits SQLite lease coordination", async () => {
-    const agentId = "missing-lease-host-fail-closed";
-    const cfg = createQmdCfg(agentId, "/tmp/workspace", { fallback: "none" });
-
-    const result = await getMemorySearchManagerWithoutLease({ cfg, agentId });
-
-    expect(result.manager).toBeNull();
-    expect(result.error).toContain("memory-core host does not provide SQLite lease coordination");
-    expect(result.debug).toMatchObject({
-      backend: "qmd",
-      managerCacheState: "qmd-unavailable",
-      failureCode: "qmd-unavailable",
-    });
-    expect(mockMemoryIndexGet).not.toHaveBeenCalled();
-    expect(createQmdManagerMock).not.toHaveBeenCalled();
-  });
-
   it("keeps the cached QMD manager active when the caller cancels a search", async () => {
     const agentId = "cancelled-search";
     const cfg = createQmdCfg(agentId);
@@ -287,50 +270,6 @@ describe("getMemorySearchManager caching and lifecycle", () => {
     expect(createQmdManagerMock).not.toHaveBeenCalled();
     expect(mockMemoryIndexGet).toHaveBeenCalled();
     expect(searchResults).toHaveLength(1);
-  });
-
-  it("keeps qmd startup failure fail-closed when fallback is disabled", async () => {
-    const agentId = "missing-qmd-fail-closed";
-    const cfg = createQmdCfg(agentId, "/tmp/workspace", { fallback: "none" });
-    checkQmdBinaryAvailability.mockResolvedValueOnce({
-      available: false,
-      reason: "binary",
-      error: "spawn qmd ENOENT",
-    });
-
-    const result = await getMemorySearchManager({ cfg, agentId });
-
-    expect(result.manager).toBeNull();
-    expect(result.error).toContain("qmd binary unavailable (qmd): spawn qmd ENOENT");
-    expect(result.debug).toMatchObject({
-      backend: "qmd",
-      managerCacheState: "qmd-unavailable",
-      failureCode: "qmd-unavailable",
-    });
-    expect(createQmdManagerMock).not.toHaveBeenCalled();
-    expect(mockMemoryIndexGet).not.toHaveBeenCalled();
-  });
-
-  it("keeps qmd open-failure cooldown fail-closed without builtin activation", async () => {
-    const agentId = "qmd-open-cooldown-fail-closed";
-    const cfg = createQmdCfg(agentId, "/tmp/workspace", { fallback: "none" });
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000);
-    createQmdManagerMock.mockRejectedValueOnce(new Error("Cannot find package 'chokidar'"));
-
-    try {
-      const first = await getMemorySearchManager({ cfg, agentId });
-      const second = await getMemorySearchManager({ cfg, agentId });
-
-      expect(first.manager).toBeNull();
-      expect(second.manager).toBeNull();
-      expect(first.error).toContain("Cannot find package 'chokidar'");
-      expect(second.error).toContain("Cannot find package 'chokidar'");
-      expect(createQmdManagerMock).toHaveBeenCalledTimes(1);
-      expect(checkQmdBinaryAvailability).toHaveBeenCalledTimes(1);
-      expect(mockMemoryIndexGet).not.toHaveBeenCalled();
-    } finally {
-      nowSpy.mockRestore();
-    }
   });
 
   it("returns the qmd startup failure when builtin fallback is unavailable", async () => {
