@@ -298,28 +298,27 @@ async function getMemorySearchManagerWithinLifecycle(
       params.withLease,
     );
     const debugIdentityHash = hashQmdManagerIdentity(identityKey);
+    const logQmdFallbackUnavailable = (prefix: string, message: string): void => {
+      log.warn(
+        qmdResolved.fallback === "builtin"
+          ? `${prefix}; falling back to builtin: ${message}`
+          : `${prefix}; builtin fallback disabled: ${message}`,
+      );
+    };
 
     const createPrimaryQmdManager = async (
       mode: "full" | "status" | "cli",
     ): Promise<{ manager: Maybe<MemorySearchManager>; failureReason?: string }> => {
       if (!params.withLease) {
         const message = "memory-core host does not provide SQLite lease coordination";
-        log.warn(
-          qmdResolved.fallback === "builtin"
-            ? `qmd memory unavailable; falling back to builtin: ${message}`
-            : `qmd memory unavailable; builtin fallback disabled: ${message}`,
-        );
+        logQmdFallbackUnavailable("qmd memory unavailable", message);
         return { manager: null, failureReason: `qmd memory unavailable: ${message}` };
       }
       try {
         await fs.mkdir(workspaceDir, { recursive: true });
       } catch (err) {
         const message = formatErrorMessage(err);
-        log.warn(
-          qmdResolved.fallback === "builtin"
-            ? `qmd workspace unavailable (${workspaceDir}); falling back to builtin: ${message}`
-            : `qmd workspace unavailable (${workspaceDir}); builtin fallback disabled: ${message}`,
-        );
+        logQmdFallbackUnavailable(`qmd workspace unavailable (${workspaceDir})`, message);
         return {
           manager: null,
           failureReason: `qmd workspace unavailable (${workspaceDir}): ${message}`,
@@ -337,11 +336,7 @@ async function getMemorySearchManagerWithinLifecycle(
           resolveQmdBinaryUnavailableReason(qmdBinary) === "workspace-cwd"
             ? `qmd workspace unavailable (${workspaceDir})`
             : `qmd binary unavailable (${qmdResolved.command})`;
-        log.warn(
-          qmdResolved.fallback === "builtin"
-            ? `${failurePrefix}; falling back to builtin: ${message}`
-            : `${failurePrefix}; builtin fallback disabled: ${message}`,
-        );
+        logQmdFallbackUnavailable(failurePrefix, message);
         return {
           manager: null,
           failureReason: `${failurePrefix}: ${message}`,
@@ -363,11 +358,7 @@ async function getMemorySearchManagerWithinLifecycle(
         }
       } catch (err) {
         const message = formatErrorMessage(err);
-        log.warn(
-          qmdResolved.fallback === "builtin"
-            ? `qmd memory unavailable; falling back to builtin: ${message}`
-            : `qmd memory unavailable; builtin fallback disabled: ${message}`,
-        );
+        logQmdFallbackUnavailable("qmd memory unavailable", message);
         return { manager: null, failureReason: `qmd memory unavailable: ${message}` };
       }
       return { manager: null, failureReason: "qmd memory unavailable: no manager returned" };
