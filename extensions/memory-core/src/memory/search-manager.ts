@@ -56,7 +56,6 @@ type MemorySearchManagerCacheState =
   | "transient-status"
   | "pending-create-wait"
   | "fallback-builtin"
-  | "qmd-unavailable"
   | "recent-failure-cooldown";
 
 type MemorySearchManagerDebug = {
@@ -304,11 +303,7 @@ async function getMemorySearchManagerWithinLifecycle(
     ): Promise<{ manager: Maybe<MemorySearchManager>; failureReason?: string }> => {
       if (!params.withLease) {
         const message = "memory-core host does not provide SQLite lease coordination";
-        log.warn(
-          qmdResolved.fallback === "builtin"
-            ? `qmd memory unavailable; falling back to builtin: ${message}`
-            : `qmd memory unavailable; builtin fallback disabled: ${message}`,
-        );
+        log.warn(`qmd memory unavailable; falling back to builtin: ${message}`);
         return { manager: null, failureReason: `qmd memory unavailable: ${message}` };
       }
       try {
@@ -316,9 +311,7 @@ async function getMemorySearchManagerWithinLifecycle(
       } catch (err) {
         const message = formatErrorMessage(err);
         log.warn(
-          qmdResolved.fallback === "builtin"
-            ? `qmd workspace unavailable (${workspaceDir}); falling back to builtin: ${message}`
-            : `qmd workspace unavailable (${workspaceDir}); builtin fallback disabled: ${message}`,
+          `qmd workspace unavailable (${workspaceDir}); falling back to builtin: ${message}`,
         );
         return {
           manager: null,
@@ -337,11 +330,7 @@ async function getMemorySearchManagerWithinLifecycle(
           resolveQmdBinaryUnavailableReason(qmdBinary) === "workspace-cwd"
             ? `qmd workspace unavailable (${workspaceDir})`
             : `qmd binary unavailable (${qmdResolved.command})`;
-        log.warn(
-          qmdResolved.fallback === "builtin"
-            ? `${failurePrefix}; falling back to builtin: ${message}`
-            : `${failurePrefix}; builtin fallback disabled: ${message}`,
-        );
+        log.warn(`${failurePrefix}; falling back to builtin: ${message}`);
         return {
           manager: null,
           failureReason: `${failurePrefix}: ${message}`,
@@ -363,11 +352,7 @@ async function getMemorySearchManagerWithinLifecycle(
         }
       } catch (err) {
         const message = formatErrorMessage(err);
-        log.warn(
-          qmdResolved.fallback === "builtin"
-            ? `qmd memory unavailable; falling back to builtin: ${message}`
-            : `qmd memory unavailable; builtin fallback disabled: ${message}`,
-        );
+        log.warn(`qmd memory unavailable; falling back to builtin: ${message}`);
         return { manager: null, failureReason: `qmd memory unavailable: ${message}` };
       }
       return { manager: null, failureReason: "qmd memory unavailable: no manager returned" };
@@ -384,7 +369,6 @@ async function getMemorySearchManagerWithinLifecycle(
         {
           primary,
           retirePrimary: () => retireQmdManagerInScope(scopeKey, primary),
-          fallbackMode: qmdResolved.fallback,
           fallbackFactory: async () => {
             const { MemoryIndexManager } = await loadManagerRuntime();
             return await MemoryIndexManager.get(params);
@@ -453,35 +437,19 @@ async function getMemorySearchManagerWithinLifecycle(
               qmdIdentityHash: debugIdentityHash,
             },
           )
-        : finish(
-            await getMemorySearchManagerAfterQmdFailure(
-              params,
-              qmdResolved.fallback,
-              failureReason,
-            ),
-            {
-              backend: "qmd",
-              managerCacheState:
-                qmdResolved.fallback === "builtin" ? "fallback-builtin" : "qmd-unavailable",
-              qmdIdentityHash: debugIdentityHash,
-              failureCode: "qmd-unavailable",
-            },
-          );
+        : finish(await getBuiltinMemorySearchManagerAfterQmdFailure(params, failureReason), {
+            backend: "qmd",
+            managerCacheState: "fallback-builtin",
+            qmdIdentityHash: debugIdentityHash,
+            failureCode: "qmd-unavailable",
+          });
     }
 
     const recentFailure = getActiveQmdManagerOpenFailure(scopeKey, identityKey);
     if (recentFailure) {
-      log.debug?.(
-        qmdResolved.fallback === "builtin"
-          ? `qmd memory unavailable; using builtin during cooldown: ${recentFailure.reason}`
-          : `qmd memory unavailable during cooldown; builtin fallback disabled: ${recentFailure.reason}`,
-      );
+      log.debug?.(`qmd memory unavailable; using builtin during cooldown: ${recentFailure.reason}`);
       return finish(
-        await getMemorySearchManagerAfterQmdFailure(
-          params,
-          qmdResolved.fallback,
-          recentFailure.reason,
-        ),
+        await getBuiltinMemorySearchManagerAfterQmdFailure(params, recentFailure.reason),
         {
           backend: "qmd",
           managerCacheState: "recent-failure-cooldown",
@@ -547,20 +515,12 @@ async function getMemorySearchManagerWithinLifecycle(
             qmdIdentityHash: debugIdentityHash,
           },
         )
-      : finish(
-          await getMemorySearchManagerAfterQmdFailure(
-            params,
-            qmdResolved.fallback,
-            pendingFailureReason,
-          ),
-          {
-            backend: "qmd",
-            managerCacheState:
-              qmdResolved.fallback === "builtin" ? "fallback-builtin" : "qmd-unavailable",
-            qmdIdentityHash: debugIdentityHash,
-            failureCode: "qmd-unavailable",
-          },
-        );
+      : finish(await getBuiltinMemorySearchManagerAfterQmdFailure(params, pendingFailureReason), {
+          backend: "qmd",
+          managerCacheState: "fallback-builtin",
+          qmdIdentityHash: debugIdentityHash,
+          failureCode: "qmd-unavailable",
+        });
   }
 
   return finish(await getBuiltinMemorySearchManager(params), {
@@ -568,17 +528,10 @@ async function getMemorySearchManagerWithinLifecycle(
   });
 }
 
-async function getMemorySearchManagerAfterQmdFailure(
+async function getBuiltinMemorySearchManagerAfterQmdFailure(
   params: MemorySearchManagerParams,
-  fallbackMode: "builtin" | "none",
   qmdFailureReason: string | undefined,
 ): Promise<MemorySearchManagerResult> {
-  if (fallbackMode === "none") {
-    return {
-      manager: null,
-      error: qmdFailureReason ?? "qmd memory unavailable",
-    };
-  }
   const fallback = await getBuiltinMemorySearchManager(params);
   if (fallback.manager || !qmdFailureReason) {
     return fallback;

@@ -44,7 +44,7 @@ export abstract class QmdManagerSync extends QmdManagerBase {
     force?: boolean,
     opts?: { fromForcedQueue?: boolean },
   ): Promise<void> {
-    if (this.closing || this.closed) {
+    if (this.closed) {
       return;
     }
     if (this.pendingUpdate) {

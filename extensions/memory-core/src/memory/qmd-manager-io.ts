@@ -30,14 +30,6 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
     from?: number;
     lines?: number;
   }): Promise<MemoryReadResult> {
-    return await this.withManagerOperation(async () => await this.readFileAdmitted(params));
-  }
-
-  private async readFileAdmitted(params: {
-    relPath: string;
-    from?: number;
-    lines?: number;
-  }): Promise<MemoryReadResult> {
     const relPath = params.relPath?.trim();
     if (!relPath) {
       throw new Error("path required");
@@ -93,9 +85,6 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
   }
 
   status(): MemoryProviderStatus {
-    if (this.closing || this.closed) {
-      throw new Error("QMD memory manager is closed");
-    }
     const counts = this.readCounts();
     return {
       backend: "qmd",
@@ -136,25 +125,17 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
   }
 
   async probeEmbeddingAvailability(): Promise<MemoryEmbeddingProbeResult> {
-    return await this.withManagerOperation(async () => {
-      if (!qmdUsesVectors(this.qmd.searchMode)) {
-        return { ok: true, checked: false };
-      }
-      const ok = await this.probeVectorAvailabilityAdmitted();
-      return {
-        ok,
-        error: ok ? undefined : (this.vectorStatusDetail ?? "QMD semantic vectors are unavailable"),
-      };
-    });
+    if (!qmdUsesVectors(this.qmd.searchMode)) {
+      return { ok: true, checked: false };
+    }
+    const ok = await this.probeVectorAvailability();
+    return {
+      ok,
+      error: ok ? undefined : (this.vectorStatusDetail ?? "QMD semantic vectors are unavailable"),
+    };
   }
 
   async probeVectorAvailability(): Promise<boolean> {
-    return await this.withManagerOperation(
-      async () => await this.probeVectorAvailabilityAdmitted(),
-    );
-  }
-
-  private async probeVectorAvailabilityAdmitted(): Promise<boolean> {
     if (!qmdUsesVectors(this.qmd.searchMode)) {
       this.vectorAvailable = false;
       this.vectorStatusDetail = null;
@@ -244,9 +225,6 @@ export abstract class QmdManagerIo extends QmdManagerSearch {
   }
 
   protected ensureDb(): SqliteDatabase {
-    if (this.closed) {
-      throw new Error("QMD memory manager is closed");
-    }
     if (this.db) {
       return this.db;
     }

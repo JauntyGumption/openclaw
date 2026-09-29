@@ -14,7 +14,7 @@ export abstract class QmdManagerLifecycle extends QmdManagerSync {
   private closePromise: Promise<void> | null = null;
 
   protected ensureWatcher(): void {
-    if (!this.syncSettings?.watch || this.watcher || this.closing || this.closed) {
+    if (!this.syncSettings?.watch || this.watcher || this.closed) {
       return;
     }
     const watchPaths = new Set<string>();
@@ -76,7 +76,7 @@ export abstract class QmdManagerLifecycle extends QmdManagerSync {
   }
 
   protected scheduleWatchSync(): void {
-    if (!this.syncSettings?.watch || this.closing || this.closed) {
+    if (!this.syncSettings?.watch) {
       return;
     }
     if (this.watchTimer) {
@@ -105,7 +105,7 @@ export abstract class QmdManagerLifecycle extends QmdManagerSync {
   }
 
   protected async maybeWarmSession(sessionKey?: string): Promise<void> {
-    if (this.mode === "cli" || this.closing || this.closed || !this.syncSettings?.onSessionStart) {
+    if (this.mode === "cli" || !this.syncSettings?.onSessionStart) {
       return;
     }
     const key = sessionKey?.trim() || "";
@@ -119,13 +119,7 @@ export abstract class QmdManagerLifecycle extends QmdManagerSync {
   }
 
   protected async maybeSyncDirtySearchState(): Promise<void> {
-    if (
-      this.mode === "cli" ||
-      this.closing ||
-      this.closed ||
-      !this.syncSettings?.onSearch ||
-      !this.dirty
-    ) {
+    if (this.mode === "cli" || !this.syncSettings?.onSearch || !this.dirty) {
       return;
     }
     await this.sync({ reason: "search" });
@@ -150,8 +144,6 @@ export abstract class QmdManagerLifecycle extends QmdManagerSync {
   }
 
   private async closeOnce(): Promise<void> {
-    this.closing = true;
-    await this.awaitManagerIdle();
     this.closed = true;
     this.resolveCloseSignal();
     this.closeAbortController.abort(new Error("qmd manager closed"));

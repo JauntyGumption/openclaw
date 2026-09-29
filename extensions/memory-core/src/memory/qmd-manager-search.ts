@@ -63,21 +63,6 @@ export abstract class QmdManagerSearch extends QmdManagerSearchSupport {
       signal?: AbortSignal;
     } & MemorySearchDeadlineControlOptions,
   ): Promise<MemorySearchResult[]> {
-    return await this.withManagerOperation(async () => await this.searchAdmitted(query, opts));
-  }
-
-  private async searchAdmitted(
-    query: string,
-    opts?: {
-      maxResults?: number;
-      minScore?: number;
-      sessionKey?: string;
-      qmdSearchModeOverride?: "query" | "search" | "vsearch";
-      onDebug?: (debug: MemorySearchRuntimeDebug) => void;
-      sources?: MemorySource[];
-      signal?: AbortSignal;
-    } & MemorySearchDeadlineControlOptions,
-  ): Promise<MemorySearchResult[]> {
     if (!this.isScopeAllowed(opts?.sessionKey)) {
       this.logScopeDenied(opts?.sessionKey);
       return [];
