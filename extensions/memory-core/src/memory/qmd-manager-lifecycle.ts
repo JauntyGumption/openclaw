@@ -105,12 +105,7 @@ export abstract class QmdManagerLifecycle extends QmdManagerSync {
   }
 
   protected async maybeWarmSession(sessionKey?: string): Promise<void> {
-    if (
-      this.mode === "cli" ||
-      this.closing ||
-      this.closed ||
-      !this.syncSettings?.onSessionStart
-    ) {
+    if (this.mode === "cli" || this.closing || this.closed || !this.syncSettings?.onSessionStart) {
       return;
     }
     const key = sessionKey?.trim() || "";
