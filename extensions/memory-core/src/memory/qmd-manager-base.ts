@@ -84,7 +84,10 @@ export abstract class QmdManagerBase {
   protected queuedForcedUpdate: Promise<void> | null = null;
   protected queuedForcedRuns = 0;
   protected dirty = false;
+  protected closing = false;
   protected closed = false;
+  private activeManagerOperations = 0;
+  private readonly managerIdleWaiters = new Set<() => void>();
   protected mode: QmdManagerMode = "full";
   protected readonly closeSignal: Promise<void>;
   protected resolveCloseSignal!: () => void;
@@ -459,6 +462,33 @@ export abstract class QmdManagerBase {
     opts?: { timeoutMs?: number; discardOutput?: boolean; signal?: AbortSignal },
   ): Promise<{ stdout: string; stderr: string }> {
     return await this.commands.run(args, opts);
+  }
+
+  protected async withManagerOperation<T>(run: () => Promise<T>): Promise<T> {
+    if (this.closing || this.closed) {
+      throw new Error("QMD memory manager is closed");
+    }
+    this.activeManagerOperations += 1;
+    try {
+      return await run();
+    } finally {
+      this.activeManagerOperations -= 1;
+      if (this.activeManagerOperations === 0) {
+        const waiters = Array.from(this.managerIdleWaiters);
+        this.managerIdleWaiters.clear();
+        for (const resolve of waiters) {
+          resolve();
+        }
+      }
+    }
+  }
+
+  protected async awaitManagerIdle(): Promise<void> {
+    if (this.activeManagerOperations > 0) {
+      await new Promise<void>((resolve) => {
+        this.managerIdleWaiters.add(resolve);
+      });
+    }
   }
 
   protected abstract runUpdate(reason: string, force?: boolean): Promise<void>;

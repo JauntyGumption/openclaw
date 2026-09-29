@@ -65,6 +65,7 @@ class FallbackMemoryManager implements MemorySearchManager {
   private fallbackInitPromise: Promise<Maybe<MemorySearchManager>> | null = null;
   private primaryFailed = false;
   private lastError?: string;
+  private lastPrimaryStatus: ReturnType<MemorySearchManager["status"]> | null = null;
   private cacheEvicted = false;
   private closed = false;
   private closePromise: Promise<void> | null = null;
@@ -74,6 +75,7 @@ class FallbackMemoryManager implements MemorySearchManager {
     private readonly deps: {
       primary: MemorySearchManager;
       retirePrimary: () => void;
+      fallbackMode: "builtin" | "none";
       fallbackFactory: () => Promise<Maybe<MemorySearchManager>>;
       log: { warn: (message: string) => void };
     },
@@ -93,11 +95,26 @@ class FallbackMemoryManager implements MemorySearchManager {
         }
         this.primaryFailed = true;
         this.lastError = formatErrorMessage(err);
-        this.deps.log.warn(`qmd memory failed; switching to builtin index: ${this.lastError}`);
+        try {
+          this.lastPrimaryStatus = this.deps.primary.status();
+        } catch {
+          this.lastPrimaryStatus = null;
+        }
+        this.deps.log.warn(
+          this.deps.fallbackMode === "builtin"
+            ? `qmd memory failed; switching to builtin index: ${this.lastError}`
+            : `qmd memory failed; builtin fallback disabled: ${this.lastError}`,
+        );
         this.deps.retirePrimary();
         // Evict the failed wrapper so the next request can retry QMD with a fresh manager.
         this.evictCacheEntry();
+        if (this.deps.fallbackMode === "none") {
+          throw err;
+        }
       }
+    }
+    if (this.deps.fallbackMode === "none") {
+      throw new Error(this.lastError ?? "memory search unavailable");
     }
     // The fallback owns a fresh default budget. Release any outer QMD clock
     // before builtin setup so earlier QMD maintenance cannot shorten it.
@@ -143,10 +160,23 @@ class FallbackMemoryManager implements MemorySearchManager {
       } catch (err) {
         this.primaryFailed = true;
         this.lastError = formatErrorMessage(err);
-        this.deps.log.warn(`qmd memory failed; switching to builtin index: ${this.lastError}`);
+        try {
+          this.lastPrimaryStatus = this.deps.primary.status();
+        } catch {
+          this.lastPrimaryStatus = null;
+        }
+        this.deps.log.warn(
+          this.deps.fallbackMode === "builtin"
+            ? `qmd memory failed; switching to builtin index: ${this.lastError}`
+            : `qmd memory failed; builtin fallback disabled: ${this.lastError}`,
+        );
         this.deps.retirePrimary();
         this.evictCacheEntry();
       }
+    } else if (!this.primaryFailed && this.deps.fallbackMode === "none") {
+      // Missing optional QMD capabilities are not backend failures. In fail-closed
+      // mode they must not activate builtin memory as an implicit sidecar.
+      return [];
     }
     const fallback = await this.ensureFallback();
     return (await fallback?.listCuratedProjectCandidates?.(opts)) ?? [];
@@ -157,7 +187,8 @@ class FallbackMemoryManager implements MemorySearchManager {
     if (!this.primaryFailed) {
       return this.deps.primary.status();
     }
-    const fallbackStatus = this.fallback?.status() ?? this.deps.primary.status();
+    const fallbackStatus =
+      this.fallback?.status() ?? this.lastPrimaryStatus ?? this.deps.primary.status();
     const fallbackInfo = { from: "qmd", reason: this.lastError ?? "unknown" };
     return {
       ...fallbackStatus,
@@ -256,6 +287,9 @@ class FallbackMemoryManager implements MemorySearchManager {
 
   private async ensureFallback(): Promise<Maybe<MemorySearchManager>> {
     this.ensureOpen();
+    if (this.deps.fallbackMode === "none") {
+      return null;
+    }
     if (this.fallback) {
       return this.fallback;
     }

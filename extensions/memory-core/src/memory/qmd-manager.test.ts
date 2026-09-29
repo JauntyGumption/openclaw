@@ -331,6 +331,50 @@ describe("QmdMemoryManager runtime cache and command behavior", () => {
     expect(secondDebug.at(-1)?.qmd?.multiCollectionProbe).toBeUndefined();
   });
 
+  it("waits for an admitted search before QMD manager teardown", async () => {
+    await configureMemoryCoreDreamingStateForTests();
+    let searchChild: MockChild | undefined;
+    spawnMock.mockImplementation((_cmd: string, args: string[]) => {
+      if (args[0] === "search") {
+        searchChild = createMockChild({ autoClose: false });
+        return searchChild;
+      }
+      if (args[0] === "--version") {
+        return makeQmdChild({ data: "qmd 1.0.0" });
+      }
+      return createMockChild();
+    });
+    const { manager } = await createManager({ mode: "full" });
+
+    const search = manager.search("memory fact", {
+      sessionKey: "agent:main:slack:dm:u123",
+    });
+    await waitUntil(() => Boolean(searchChild));
+
+    let closeSettled = false;
+    const close = manager.close().then(() => {
+      closeSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(closeSettled).toBe(false);
+    await expect(
+      manager.search("late search", { sessionKey: "agent:main:slack:dm:u123" }),
+    ).rejects.toThrow("QMD memory manager is closed");
+
+    emitAndClose(requireValue(searchChild, "search child missing"), "stdout", "[]");
+    await expect(search).resolves.toStrictEqual([]);
+    await close;
+
+    expect(closeSettled).toBe(true);
+    const ensureDb = (
+      manager as unknown as {
+        ensureDb: () => unknown;
+      }
+    ).ensureDb.bind(manager);
+    expect(ensureDb).toThrow("QMD memory manager is closed");
+  });
+
   it("keeps concurrent search debug isolated on a shared qmd manager", async () => {
     await configureMemoryCoreDreamingStateForTests();
     configureQmd({ sessions: { enabled: true } });
