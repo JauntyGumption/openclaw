@@ -71,6 +71,10 @@ describe("QmdSessionExporter", () => {
       await exporter.exportSessions(lease);
 
       expect(mocks.buildSessionEntry).toHaveBeenCalledTimes(1);
+      expect(mocks.buildSessionEntry).toHaveBeenCalledWith(
+        corpusEntry.sessionFile,
+        expect.objectContaining({ maxMessageChars: 32_000 }),
+      );
       await expect(fs.readFile(path.join(exportDir, "session-1.md"), "utf8")).resolves.toContain(
         "User: first",
       );
