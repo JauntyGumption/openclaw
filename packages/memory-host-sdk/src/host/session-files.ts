@@ -99,6 +99,12 @@ export type BuildSessionEntryOptions = {
   updatedAtMs?: number;
   /** Override for tests or specialized callers that need a tighter parse yield cadence. */
   parseYieldEveryLines?: number;
+  /**
+   * Optional per-message export ceiling. Oversized user/assistant turns retain
+   * their beginning and end with an explicit omission marker between them.
+   * Leave unset for callers that need the complete transcript text.
+   */
+  maxMessageChars?: number;
   /** Observe persisted messages before memory indexing drops tool-only content. */
   onTranscriptMessage?: (message: unknown, observedAt: number) => void;
 };
@@ -649,6 +655,51 @@ function sanitizeSessionText(text: string, role: "user" | "assistant"): string |
   return normalized;
 }
 
+function truncateSessionTextForExport(text: string, maxChars: number | undefined): string {
+  if (typeof maxChars !== "number" || !Number.isFinite(maxChars)) {
+    return text;
+  }
+  const limit = Math.max(256, Math.floor(maxChars));
+  if (text.length <= limit) {
+    return text;
+  }
+
+  // Keep both ends: the opening usually carries intent/context while the tail
+  // often contains the actual question, error, or conclusion after a large dump.
+  const markerTemplate = (omitted: number) =>
+    ` … [${omitted} chars omitted from oversized message] … `;
+  let marker = markerTemplate(text.length - limit);
+  const available = Math.max(2, limit - marker.length);
+  let headChars = Math.ceil(available / 2);
+  let tailChars = Math.floor(available / 2);
+
+  let headEnd = headChars;
+  if (
+    headEnd > 0 &&
+    headEnd < text.length &&
+    isHighSurrogate(text.charCodeAt(headEnd - 1)) &&
+    isLowSurrogate(text.charCodeAt(headEnd))
+  ) {
+    headEnd -= 1;
+    headChars -= 1;
+    tailChars += 1;
+  }
+
+  let tailStart = Math.max(headEnd, text.length - tailChars);
+  if (
+    tailStart > 0 &&
+    tailStart < text.length &&
+    isLowSurrogate(text.charCodeAt(tailStart)) &&
+    isHighSurrogate(text.charCodeAt(tailStart - 1))
+  ) {
+    tailStart -= 1;
+  }
+
+  const omitted = Math.max(0, tailStart - headEnd);
+  marker = markerTemplate(omitted);
+  return `${text.slice(0, headEnd).trimEnd()}${marker}${text.slice(tailStart).trimStart()}`;
+}
+
 function isRecalledMemoryMessage(message: { provenance?: unknown }): boolean {
   const provenance = message.provenance as { kind?: unknown; sourceTool?: unknown } | undefined;
   return (
@@ -936,7 +987,8 @@ export async function buildSessionEntry(
       if (!text) {
         continue;
       }
-      const safe = redactSensitiveText(text, { mode: "tools" });
+      const boundedText = truncateSessionTextForExport(text, opts.maxMessageChars);
+      const safe = redactSensitiveText(boundedText, { mode: "tools" });
       const label = message.role === "user" ? "User" : "Assistant";
       const renderedLines = renderSessionExportLines(label, safe);
       const memoryProvenance: MemoryEntryProvenance = {
