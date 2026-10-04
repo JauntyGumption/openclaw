@@ -1061,6 +1061,31 @@ describe("buildSessionEntry", () => {
     expect(entry.content).toBe("User: Actual user text");
   });
 
+  it("bounds oversized messages while preserving both ends for controlled exports", async () => {
+    const oversized = `OPEN-${"a".repeat(2_000)}-CLOSE`;
+    const filePath = path.join(tmpDir, "oversized-session.jsonl");
+    fsSync.writeFileSync(
+      filePath,
+      JSON.stringify({
+        type: "message",
+        message: { role: "user", content: oversized },
+      }),
+    );
+
+    const complete = requireSessionEntry(await buildSessionEntry(filePath));
+    expect(complete.content).toContain(oversized);
+
+    const bounded = requireSessionEntry(
+      await buildSessionEntry(filePath, { maxMessageChars: 256 }),
+    );
+    expect(bounded.content).toContain("User: OPEN-");
+    expect(bounded.content).toContain("-CLOSE");
+    expect(bounded.content).toContain("chars omitted from oversized message");
+    expect(bounded.content).not.toContain("a".repeat(1_000));
+    expect(bounded.content.length).toBeLessThan(400);
+    expect(bounded.lineMap).toStrictEqual([1]);
+  });
+
   it("drops Date-invalid numeric message timestamps", async () => {
     const jsonlLines = [
       JSON.stringify({
