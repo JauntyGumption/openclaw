@@ -24,6 +24,12 @@ import { sanitizeQmdCollectionNameSegment } from "./qmd-collection-metadata.js";
 
 const log = createSubsystemLogger("memory");
 
+// Transcript recall should preserve conversational continuity without allowing
+// one pasted log, source dump, or generated wall of text to dominate the QMD
+// corpus. The session timeline remains intact; only pathological individual
+// messages are excerpted by buildSessionEntry.
+const QMD_SESSION_EXPORT_MAX_MESSAGE_CHARS = 32_000;
+
 type QmdSessionExporterConfig = {
   dir: string;
   retentionMs?: number;
@@ -138,6 +144,7 @@ export class QmdSessionExporter {
           : {}),
         ...(corpusEntry.sessionKey ? { sessionKey: corpusEntry.sessionKey } : {}),
         ...(corpusEntry.updatedAtMs !== undefined ? { updatedAtMs: corpusEntry.updatedAtMs } : {}),
+        maxMessageChars: QMD_SESSION_EXPORT_MAX_MESSAGE_CHARS,
       });
       if (!entry || (cutoff && entry.mtimeMs < cutoff)) {
         continue;
