@@ -20,6 +20,7 @@ import {
   applySessionStoreProjection as applyAccessorSessionStoreProjection,
   cleanupSessionLifecycleArtifactsCore as cleanupAccessorSessionLifecycleArtifacts,
   deleteSessionEntryLifecycle as deleteAccessorSessionEntryLifecycle,
+  loadTranscriptEventRowsPageSync as loadAccessorTranscriptEventRowsPageSync,
   loadTranscriptEventsSync as loadAccessorTranscriptEventsSync,
   listSessionEntriesCore as listAccessorSessionEntries,
   listSessionEntriesReadOnly as listAccessorSessionEntriesReadOnly,
@@ -409,6 +410,28 @@ export function listSessionEntries(
     sessionKey,
     entry: projectPluginSessionEntry(entry),
   }));
+}
+
+/** Reads one bounded forward page of raw SQLite transcript events. */
+export function loadTranscriptEventRowsPageSync(
+  params: {
+    agentId?: string;
+    env?: NodeJS.ProcessEnv;
+    sessionId: string;
+    sessionKey?: string;
+    storePath?: string;
+  },
+  options: {
+    afterSeq: number;
+    throughSeq?: number;
+    maxEvents: number;
+    maxBytes: number;
+  },
+): { rows: Array<{ event: SessionStoreTranscriptEvent; seq: number }>; serializedBytes: number } {
+  return loadAccessorTranscriptEventRowsPageSync(params, options) as {
+    rows: Array<{ event: SessionStoreTranscriptEvent; seq: number }>;
+    serializedBytes: number;
+  };
 }
 
 /** Reads transcript events for a live SQLite-backed session identity. */

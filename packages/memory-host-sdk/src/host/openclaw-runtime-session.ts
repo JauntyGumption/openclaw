@@ -34,6 +34,7 @@ export { resolveSessionTranscriptsDirForAgent } from "../../../../src/config/ses
 export type { SessionEntry } from "../../../../src/config/sessions/types.js";
 export { isExecCompletionEvent } from "../../../../src/infra/heartbeat-events-filter.js";
 export {
+  loadTranscriptEventRowsPageSync,
   loadTranscriptEventsSync,
   listSessionEntries,
   parseSqliteSessionFileMarker,
