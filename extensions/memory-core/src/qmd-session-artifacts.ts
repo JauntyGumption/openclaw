@@ -4,6 +4,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { MemorySearchResult } from "openclaw/plugin-sdk/memory-core-host-runtime-files";
 import { migrateSqliteSchemaToStrict } from "openclaw/plugin-sdk/plugin-state-runtime";
 import { openNodeSqliteDatabase } from "openclaw/plugin-sdk/sqlite-runtime";
+import { normalizeQmdLookupPath } from "./memory/qmd-document-resolver.js";
 
 const QMD_SESSION_ARTIFACT_TABLE = "openclaw_qmd_session_artifacts";
 const QMD_SESSION_ARTIFACT_SCHEMA = `
@@ -189,18 +190,52 @@ export function refreshQmdSessionArtifactDocIds(params: {
   let transactionStarted = false;
   try {
     ensureQmdSessionArtifactSchema(db);
-    const rows = db
+    const mappings = db
       .prepare(
-        `SELECT d.hash AS docid, m.artifact_path AS artifact_path
-         FROM ${QMD_SESSION_ARTIFACT_TABLE} m
-         JOIN documents d
-           ON d.collection = m.collection
-          AND d.path = m.artifact_path
-          AND d.active = 1
-         WHERE m.collection = ?`,
+        `SELECT artifact_path
+         FROM ${QMD_SESSION_ARTIFACT_TABLE}
+         WHERE collection = ?`,
       )
-      // SAFETY: The controlled join projects docid and artifact_path text from owned schemas.
-      .all(params.collection) as Array<{ artifact_path: string; docid: string }>;
+      // SAFETY: The controlled SELECT projects artifact_path text from the owned schema.
+      .all(params.collection) as Array<{ artifact_path: string }>;
+    const documents = db
+      .prepare(
+        `SELECT hash AS docid, path
+         FROM documents
+         WHERE collection = ? AND active = 1`,
+      )
+      // SAFETY: The controlled SELECT projects path/hash text from the owned QMD schema.
+      .all(params.collection) as Array<{ docid: string; path: string }>;
+    const documentsByExactPath = new Map<string, Array<{ docid: string; path: string }>>();
+    const documentsByNormalizedPath = new Map<string, Array<{ docid: string; path: string }>>();
+    for (const document of documents) {
+      const exact = documentsByExactPath.get(document.path) ?? [];
+      exact.push(document);
+      documentsByExactPath.set(document.path, exact);
+      const normalizedPath = normalizeQmdLookupPath(document.path);
+      if (normalizedPath) {
+        const normalized = documentsByNormalizedPath.get(normalizedPath) ?? [];
+        normalized.push(document);
+        documentsByNormalizedPath.set(normalizedPath, normalized);
+      }
+    }
+    const rows: Array<{ artifact_path: string; docid: string }> = [];
+    for (const mapping of mappings) {
+      const exactMatches = documentsByExactPath.get(mapping.artifact_path) ?? [];
+      const normalizedPath = normalizeQmdLookupPath(mapping.artifact_path);
+      const normalizedMatches = normalizedPath
+        ? (documentsByNormalizedPath.get(normalizedPath) ?? [])
+        : [];
+      const match =
+        exactMatches.length === 1
+          ? exactMatches[0]
+          : normalizedMatches.length === 1
+            ? normalizedMatches[0]
+            : undefined;
+      if (match) {
+        rows.push({ artifact_path: mapping.artifact_path, docid: match.docid });
+      }
+    }
     const updateDocId = db.prepare(
       `UPDATE ${QMD_SESSION_ARTIFACT_TABLE}
        SET docid = ?, updated_at = ?
