@@ -237,7 +237,9 @@ function sessionPathForSessionIdentity(agentId: string, sessionId: string): stri
 
 async function yieldIfNeeded(lineIndex: number, everyLines: number): Promise<void> {
   if (lineIndex > 0 && lineIndex % everyLines === 0) {
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
   }
 }
 

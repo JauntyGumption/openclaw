@@ -178,7 +178,7 @@ describe("QMD SQLite session parts", () => {
 
     let rewrote = false;
     const collect = async () => {
-      for await (const _part of buildQmdSqliteSessionParts(scope.sessionKey, {
+      for await (const part of buildQmdSqliteSessionParts(scope.sessionKey, {
         ...scope,
         generatedByDreamingNarrative: false,
         generatedByCronRun: false,
@@ -192,6 +192,7 @@ describe("QMD SQLite session parts", () => {
           }
         },
       })) {
+        void part;
         // Consume the generator so the next raw page observes the rewrite.
       }
     };
