@@ -65,7 +65,11 @@ describe("QMD SQLite session parts", () => {
         type: "message",
         id: "user-1",
         timestamp: observedAt,
-        message: { role: "user", content: "Owner preference.", __openclaw: { senderIsOwner: true } },
+        message: {
+          role: "user",
+          content: "Owner preference.",
+          __openclaw: { senderIsOwner: true },
+        },
       },
       {
         type: "message",
@@ -150,9 +154,7 @@ describe("QMD SQLite session parts", () => {
     expect(parts.length).toBeGreaterThan(1);
     expect(parts.map((part) => part.content).join("\n")).toBe(whole?.content);
     expect(parts.flatMap((part) => part.lineMap)).toEqual(whole?.lineMap);
-    expect(parts.flatMap((part) => part.messageTimestampsMs)).toEqual(
-      whole?.messageTimestampsMs,
-    );
+    expect(parts.flatMap((part) => part.messageTimestampsMs)).toEqual(whole?.messageTimestampsMs);
     expect(parts.flatMap((part) => part.lineProvenance)).toEqual(whole?.lineProvenance);
   });
 
@@ -197,8 +199,6 @@ describe("QMD SQLite session parts", () => {
       }
     };
 
-    await expect(collect()).rejects.toBeInstanceOf(
-      QmdSessionTranscriptGenerationChangedError,
-    );
+    await expect(collect()).rejects.toBeInstanceOf(QmdSessionTranscriptGenerationChangedError);
   });
 });

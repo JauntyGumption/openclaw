@@ -17,13 +17,9 @@ import {
   stripInboundMetadata,
   stripInternalRuntimeContext,
 } from "./openclaw-runtime-session.js";
-import { classifySessionMessageOrigin } from "./session-provenance.js";
 import type { SessionFileEntry } from "./session-files.js";
-import type {
-  MemoryEntryProvenance,
-  MemoryOriginClass,
-  MemorySessionKind,
-} from "./types.js";
+import { classifySessionMessageOrigin } from "./session-provenance.js";
+import type { MemoryEntryProvenance, MemoryOriginClass, MemorySessionKind } from "./types.js";
 
 const SESSION_EXPORT_CONTENT_WRAP_CHARS = 800;
 const MAX_DATE_TIMESTAMP_MS = 8_640_000_000_000_000;
@@ -438,10 +434,7 @@ export async function* buildQmdSqliteSessionParts(
         continue;
       }
 
-      const timestampMs = parseSessionTimestampMs(
-        record as { timestamp?: unknown },
-        message,
-      );
+      const timestampMs = parseSessionTimestampMs(record as { timestamp?: unknown }, message);
       opts.onTranscriptMessage?.(message, Math.max(0, Math.floor(timestampMs || mtimeMs)));
       const inputProvenance = message.provenance as
         | { kind?: unknown; sourceTool?: unknown }

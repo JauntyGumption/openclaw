@@ -90,10 +90,7 @@ function pathStatRevision(stat: {
 
 export class QmdSessionExporter {
   private readonly exportedSessionState = new Map<string, ExportedSessionState>();
-  private readonly exportedMultipartSessionState = new Map<
-    string,
-    ExportedMultipartSessionState
-  >();
+  private readonly exportedMultipartSessionState = new Map<string, ExportedMultipartSessionState>();
 
   constructor(
     readonly config: QmdSessionExporterConfig,
@@ -409,11 +406,7 @@ export class QmdSessionExporter {
                   .then(pathStatRevision)
                   .catch(() => null)
               : null;
-          if (
-            prior &&
-            prior.targetRevision !== null &&
-            currentRevision === prior.targetRevision
-          ) {
+          if (prior && prior.targetRevision !== null && currentRevision === prior.targetRevision) {
             artifacts.push({
               artifactPath,
               target,
@@ -433,10 +426,7 @@ export class QmdSessionExporter {
           lease.signal.throwIfAborted();
           lease.assertOwned();
           await exportRoot.remove(stagedArtifact.artifactPath).catch(() => undefined);
-          await fs.rename(
-            path.join(exportDir, stagedArtifact.stageName),
-            stagedArtifact.target,
-          );
+          await fs.rename(path.join(exportDir, stagedArtifact.stageName), stagedArtifact.target);
           installedArtifactPaths.push(stagedArtifact.artifactPath);
         }
 

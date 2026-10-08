@@ -16,8 +16,7 @@ vi.mock("openclaw/plugin-sdk/memory-core-host-engine-qmd", () => ({
   buildSessionEntry: mocks.buildSessionEntry,
   isSessionArchiveArtifactName: () => false,
   listSessionTranscriptCorpusEntriesForAgent: mocks.corpusEntries,
-  QmdSessionTranscriptGenerationChangedError: class QmdSessionTranscriptGenerationChangedError
-    extends Error {},
+  QmdSessionTranscriptGenerationChangedError: class QmdSessionTranscriptGenerationChangedError extends Error {},
   resolveSessionIdentityForTranscriptFile: () => null,
   statSessionEntrySync: mocks.statSessionEntrySync,
 }));
@@ -43,11 +42,7 @@ function smallSqliteState(sessionFile: string, size = 100) {
   };
 }
 
-function multipartPart(params: {
-  content: string;
-  hash: string;
-  partIndex: number;
-}) {
+function multipartPart(params: { content: string; hash: string; partIndex: number }) {
   return {
     absPath: "agent:main:session-1",
     content: params.content,
