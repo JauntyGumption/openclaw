@@ -39,11 +39,6 @@ export type SqliteTranscriptStorageRow = SqliteTranscriptSnapshotRow & {
   createdAt: number;
 };
 
-export type SessionTranscriptEventRowPage = {
-  rows: SessionTranscriptEventRow[];
-  serializedBytes: number;
-};
-
 export function createTranscriptIdentityReader(database: OpenClawAgentDatabase, sessionId: string) {
   const read = prepareSqliteQuerySync<
     string,
@@ -180,87 +175,6 @@ export function loadTranscriptEventRowsAfterSeqSync(
     event: JSON.parse(row.event_json) as TranscriptEvent,
     seq: coerceSqliteNumber(row.seq),
   }));
-}
-
-/**
- * Loads one forward page of raw additive transcript rows without materializing
- * rows beyond the caller's byte/event budget. The first row is admitted even
- * when it alone exceeds maxBytes so callers can always make forward progress.
- */
-export function loadTranscriptEventRowsPageSync(
-  scope: SessionTranscriptReadScope,
-  options: {
-    afterSeq: number;
-    throughSeq?: number;
-    maxEvents: number;
-    maxBytes: number;
-  },
-): SessionTranscriptEventRowPage {
-  const maxEvents = Math.max(
-    0,
-    Math.floor(Number.isFinite(options.maxEvents) ? options.maxEvents : 0),
-  );
-  const maxBytes = Math.max(
-    0,
-    Math.floor(Number.isFinite(options.maxBytes) ? options.maxBytes : 0),
-  );
-  if (maxEvents === 0 || maxBytes === 0) {
-    return { rows: [], serializedBytes: 0 };
-  }
-
-  const resolved = resolveSqliteTranscriptReadScope(scope);
-  const database = openOpenClawAgentDatabase(toDatabaseOptions(resolved));
-  const db = getSessionKysely(database.db);
-  let metadataQuery = db
-    .selectFrom("transcript_events")
-    .select([
-      "seq",
-      sql<number>`OCTET_LENGTH(event_json)`.as("event_bytes"),
-    ])
-    .where("session_id", "=", resolved.sessionId)
-    .where("seq", ">", options.afterSeq);
-  if (options.throughSeq !== undefined) {
-    metadataQuery = metadataQuery.where("seq", "<=", options.throughSeq);
-  }
-  const metadata = executeSqliteQuerySync(
-    database.db,
-    metadataQuery.orderBy("seq", "asc").limit(maxEvents),
-  ).rows;
-
-  let serializedBytes = 0;
-  let lastSeq: number | undefined;
-  for (const row of metadata) {
-    const rowBytes = Math.max(0, coerceSqliteNumber(row.event_bytes));
-    if (lastSeq !== undefined && serializedBytes + rowBytes > maxBytes) {
-      break;
-    }
-    lastSeq = coerceSqliteNumber(row.seq);
-    serializedBytes += rowBytes;
-    if (serializedBytes >= maxBytes) {
-      break;
-    }
-  }
-  if (lastSeq === undefined) {
-    return { rows: [], serializedBytes: 0 };
-  }
-
-  let payloadQuery = db
-    .selectFrom("transcript_events")
-    .select(["event_json", "seq"])
-    .where("session_id", "=", resolved.sessionId)
-    .where("seq", ">", options.afterSeq)
-    .where("seq", "<=", lastSeq);
-  if (options.throughSeq !== undefined) {
-    payloadQuery = payloadQuery.where("seq", "<=", options.throughSeq);
-  }
-  const rows = executeSqliteQuerySync(
-    database.db,
-    payloadQuery.orderBy("seq", "asc"),
-  ).rows.map((row) => ({
-    event: JSON.parse(row.event_json) as TranscriptEvent,
-    seq: coerceSqliteNumber(row.seq),
-  }));
-  return { rows, serializedBytes };
 }
 
 /** Reads one checkpoint row so incremental consumers can reject transcript rewrites. */

@@ -246,7 +246,6 @@ export {
   findTranscriptEvent,
   inspectTranscriptEventsSync,
   loadTranscriptEventRowsAfterSeqSync,
-  loadTranscriptEventRowsPageSync,
   loadTranscriptEvents,
   loadTranscriptEventsSync,
   loadTranscriptHeaderSync,
