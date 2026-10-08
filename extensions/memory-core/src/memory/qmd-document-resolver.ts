@@ -422,7 +422,7 @@ function parseQmdFileUri(fileRef: string): {
   }
 }
 
-function normalizeQmdLookupPath(filePath: string): string {
+export function normalizeQmdLookupPath(filePath: string): string {
   return filePath
     .replace(/\\/g, "/")
     .split("/")
