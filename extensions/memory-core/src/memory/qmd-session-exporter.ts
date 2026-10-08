@@ -261,6 +261,11 @@ export class QmdSessionExporter {
     });
     signal.throwIfAborted();
     for (const name of exported) {
+      if (name.startsWith(".") && name.includes(".md.stage-")) {
+        lease.assertOwned();
+        await exportRoot.remove(name).catch(() => undefined);
+        continue;
+      }
       if (!name.endsWith(".md")) {
         continue;
       }
@@ -375,6 +380,7 @@ export class QmdSessionExporter {
         stageName: string;
         target: string;
       }> = [];
+      const installedArtifactPaths: string[] = [];
       const artifacts: ExportedMultipartArtifactState[] = [];
       let mtimeMs = corpusEntry.updatedAtMs ?? 0;
       try {
@@ -431,6 +437,7 @@ export class QmdSessionExporter {
             path.join(exportDir, stagedArtifact.stageName),
             stagedArtifact.target,
           );
+          installedArtifactPaths.push(stagedArtifact.artifactPath);
         }
 
         const finalized: ExportedMultipartArtifactState[] = [];
@@ -450,6 +457,9 @@ export class QmdSessionExporter {
       } catch (err) {
         for (const stagedArtifact of staged) {
           await exportRoot.remove(stagedArtifact.stageName).catch(() => undefined);
+        }
+        for (const artifactPath of installedArtifactPaths) {
+          await exportRoot.remove(artifactPath).catch(() => undefined);
         }
         if (
           err instanceof QmdSessionTranscriptGenerationChangedError &&

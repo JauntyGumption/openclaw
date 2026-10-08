@@ -222,7 +222,7 @@ describe("QmdSessionExporter", () => {
       await exporter.exportSessions(lease);
 
       expect(mocks.buildSessionEntry).not.toHaveBeenCalled();
-      await expect(fs.readdir(exportDir)).resolves.toEqual([
+      expect((await fs.readdir(exportDir)).toSorted()).toEqual([
         "session-1.part-000001.aaaaaaaaaaaaaaaa.md",
         "session-1.part-000002.bbbbbbbbbbbbbbbb.md",
       ]);
@@ -257,7 +257,7 @@ describe("QmdSessionExporter", () => {
 
       await exporter.exportSessions(lease);
 
-      await expect(fs.readdir(exportDir)).resolves.toEqual([
+      expect((await fs.readdir(exportDir)).toSorted()).toEqual([
         "session-1.part-000001.aaaaaaaaaaaaaaaa.md",
         "session-1.part-000002.cccccccccccccccc.md",
       ]);

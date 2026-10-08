@@ -363,6 +363,11 @@ export async function* buildQmdSqliteSessionParts(
       maxEvents: rawPageMaxEvents,
     });
     if (page.kind === "missing") {
+      if (stats.eventCount > 0) {
+        throw new Error(
+          `SQLite transcript ${opts.sessionId} has ${stats.eventCount} events but no raw-delta generation`,
+        );
+      }
       return;
     }
     if (page.kind === "reset") {
@@ -389,6 +394,11 @@ export async function* buildQmdSqliteSessionParts(
       if (page.kind === "reset") {
         throw new QmdSessionTranscriptGenerationChangedError(page.reason);
       }
+    }
+    if (page.events.length === 0 && page.hasMore) {
+      throw new Error(
+        `SQLite transcript ${opts.sessionId} returned an empty raw-delta page with more data pending`,
+      );
     }
 
     cursor = page.cursor;
