@@ -9,6 +9,59 @@ import {
 } from "./qmd-session-artifacts.js";
 
 describe("QMD session artifact mappings", () => {
+  it("resolves QMD-slugified document paths back to dotted artifact mappings", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-qmd-artifact-slug-"));
+    const indexPath = path.join(tempDir, "index.sqlite");
+    try {
+      const artifactPath = "session-1.part-000001.abcdef0123456789.md";
+      replaceQmdSessionArtifactMappings({
+        collection: "sessions-main",
+        indexPath,
+        mappings: [
+          {
+            agentId: "main",
+            archived: false,
+            artifactPath,
+            collection: "sessions-main",
+            memoryKey: "session/main/session-1",
+            searchPath: `qmd/sessions-main/${artifactPath}`,
+            sessionId: "session-1",
+          },
+        ],
+      });
+      const { DatabaseSync } = requireNodeSqlite();
+      const seed = new DatabaseSync(indexPath);
+      seed.exec(`
+        CREATE TABLE documents (
+          collection TEXT NOT NULL,
+          path TEXT NOT NULL,
+          active INTEGER NOT NULL,
+          hash TEXT NOT NULL
+        ) STRICT;
+      `);
+      seed
+        .prepare("INSERT INTO documents (collection, path, active, hash) VALUES (?, ?, 1, ?)")
+        .run("sessions-main", "session-1-part-000001-abcdef0123456789.md", "doc-slugged");
+      seed.close();
+
+      refreshQmdSessionArtifactDocIds({
+        assertOwned: vi.fn(),
+        collection: "sessions-main",
+        indexPath,
+      });
+
+      const verify = new DatabaseSync(indexPath, { readOnly: true });
+      expect(
+        verify
+          .prepare("SELECT docid FROM openclaw_qmd_session_artifacts WHERE artifact_path = ?")
+          .get(artifactPath),
+      ).toEqual({ docid: "doc-slugged" });
+      verify.close();
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("rechecks lease ownership before every doc-id publication and commit", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-qmd-artifact-lease-"));
     const indexPath = path.join(tempDir, "index.sqlite");
