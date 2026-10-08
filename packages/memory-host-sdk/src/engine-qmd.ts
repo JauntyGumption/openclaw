@@ -46,3 +46,10 @@ export {
   type QmdBinaryUnavailable,
   type QmdBinaryUnavailableReason,
 } from "./host/qmd-process.js";
+
+export {
+  buildQmdSqliteSessionParts,
+  QmdSessionTranscriptGenerationChangedError,
+  type BuildQmdSqliteSessionPartsOptions,
+  type QmdSqliteSessionPart,
+} from "./host/qmd-session-parts.js";

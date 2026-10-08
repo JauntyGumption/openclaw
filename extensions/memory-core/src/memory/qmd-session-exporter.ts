@@ -6,9 +6,13 @@ import {
   root,
 } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import {
+  buildQmdSqliteSessionParts,
   buildSessionEntry,
   isSessionArchiveArtifactName,
   listSessionTranscriptCorpusEntriesForAgent,
+  QmdSessionTranscriptGenerationChangedError,
+  statSessionEntrySync,
+  type QmdSqliteSessionPart,
   type SessionFileEntry,
   type SessionTranscriptCorpusEntry,
 } from "openclaw/plugin-sdk/memory-core-host-engine-qmd";
@@ -23,6 +27,9 @@ import {
 import { sanitizeQmdCollectionNameSegment } from "./qmd-collection-metadata.js";
 
 const log = createSubsystemLogger("memory");
+const QMD_SESSION_MULTIPART_THRESHOLD_BYTES = 8 * 1024 * 1024;
+const QMD_SESSION_PART_MAX_BYTES = 4 * 1024 * 1024;
+const QMD_SESSION_MULTIPART_MAX_ATTEMPTS = 3;
 
 type QmdSessionExporterConfig = {
   dir: string;
@@ -44,6 +51,20 @@ type ExportedSessionState = {
   target: string;
   targetRevision: string | null;
 };
+
+type ExportedMultipartArtifactState = {
+  artifactPath: string;
+  target: string;
+  targetRevision: string | null;
+};
+
+type ExportedMultipartSessionState = {
+  artifacts: ExportedMultipartArtifactState[];
+  mtimeMs: number;
+  revisionToken: string | null;
+};
+
+type QmdExportRoot = Awaited<ReturnType<typeof root>>;
 
 function buildSessionExportRevision(corpusEntry: SessionTranscriptCorpusEntry): string | null {
   if (!corpusEntry.contentRevision) {
@@ -69,6 +90,10 @@ function pathStatRevision(stat: {
 
 export class QmdSessionExporter {
   private readonly exportedSessionState = new Map<string, ExportedSessionState>();
+  private readonly exportedMultipartSessionState = new Map<
+    string,
+    ExportedMultipartSessionState
+  >();
 
   constructor(
     readonly config: QmdSessionExporterConfig,
@@ -93,15 +118,81 @@ export class QmdSessionExporter {
     const tracked = new Set<string>();
     const artifactMappings: QmdSessionArtifactMapping[] = [];
     const cutoff = this.config.retentionMs ? Date.now() - this.config.retentionMs : null;
+
     for (const corpusEntry of corpusEntries) {
       signal.throwIfAborted();
       const sessionFile = corpusEntry.sessionFile;
+      const revisionToken = buildSessionExportRevision(corpusEntry);
+      const buildOptions = this.buildSessionEntryOptions(corpusEntry);
+      const sqliteState =
+        corpusEntry.transcriptSource === "sqlite" && corpusEntry.storePath
+          ? statSessionEntrySync(sessionFile, buildOptions)
+          : null;
+
+      if (
+        sqliteState &&
+        sqliteState.size >= QMD_SESSION_MULTIPART_THRESHOLD_BYTES &&
+        corpusEntry.storePath
+      ) {
+        const previous = this.exportedMultipartSessionState.get(sessionFile);
+        if (
+          revisionToken &&
+          previous?.revisionToken === revisionToken &&
+          (await this.multipartArtifactsIntact(exportRoot, previous))
+        ) {
+          if (cutoff && previous.mtimeMs < cutoff) {
+            continue;
+          }
+          tracked.add(sessionFile);
+          this.exportedSessionState.delete(sessionFile);
+          for (const artifact of previous.artifacts) {
+            artifactMappings.push(
+              this.buildSessionArtifactMapping(
+                sessionFile,
+                artifact.artifactPath,
+                artifact.target,
+                corpusEntry,
+              ),
+            );
+            keep.add(artifact.target);
+          }
+          continue;
+        }
+
+        if (cutoff && sqliteState.mtimeMs < cutoff) {
+          continue;
+        }
+        const next = await this.exportMultipartSqliteSession({
+          corpusEntry,
+          exportRoot,
+          lease,
+          previous,
+          revisionToken,
+        });
+        if (!next) {
+          continue;
+        }
+        tracked.add(sessionFile);
+        this.exportedSessionState.delete(sessionFile);
+        this.exportedMultipartSessionState.set(sessionFile, next);
+        for (const artifact of next.artifacts) {
+          artifactMappings.push(
+            this.buildSessionArtifactMapping(
+              sessionFile,
+              artifact.artifactPath,
+              artifact.target,
+              corpusEntry,
+            ),
+          );
+          keep.add(artifact.target);
+        }
+        continue;
+      }
+
+      this.exportedMultipartSessionState.delete(sessionFile);
       const targetName = `${this.sessionExportStem(corpusEntry)}.md`;
       const target = path.join(exportDir, targetName);
-      const revisionToken = buildSessionExportRevision(corpusEntry);
       const state = this.exportedSessionState.get(sessionFile);
-      // The corpus owns source revision detection. This hot path only stats the
-      // derived target, so unchanged transcripts are never reread or rehashed.
       const targetRevision =
         state?.target === target
           ? await exportRoot
@@ -126,19 +217,8 @@ export class QmdSessionExporter {
         keep.add(target);
         continue;
       }
-      const entry = await buildSessionEntry(sessionFile, {
-        generatedByDreamingNarrative: corpusEntry.generatedByDreamingNarrative === true,
-        generatedByCronRun: corpusEntry.generatedByCronRun === true,
-        ...(corpusEntry.transcriptSource === "sqlite" && corpusEntry.storePath
-          ? {
-              agentId: corpusEntry.agentId,
-              sessionId: corpusEntry.sessionId,
-              storePath: corpusEntry.storePath,
-            }
-          : {}),
-        ...(corpusEntry.sessionKey ? { sessionKey: corpusEntry.sessionKey } : {}),
-        ...(corpusEntry.updatedAtMs !== undefined ? { updatedAtMs: corpusEntry.updatedAtMs } : {}),
-      });
+
+      const entry = await buildSessionEntry(sessionFile, buildOptions);
       if (!entry || (cutoff && entry.mtimeMs < cutoff)) {
         continue;
       }
@@ -154,8 +234,6 @@ export class QmdSessionExporter {
         targetRevision !== state.targetRevision;
       let nextTargetRevision = targetRevision;
       if (needsWrite) {
-        // fs-safe Root.write stages a sibling and atomically renames it, so a
-        // failed export cannot expose partially rendered markdown to QMD.
         lease.assertOwned();
         await exportRoot.write(targetName, renderSessionMarkdown(entry), { encoding: "utf-8" });
         signal.throwIfAborted();
@@ -175,6 +253,7 @@ export class QmdSessionExporter {
       });
       keep.add(target);
     }
+
     const exported = await exportRoot.list(".").catch((error: unknown) => {
       signal.throwIfAborted();
       log.debug(`failed to list qmd session exports: ${String(error)}`);
@@ -195,12 +274,23 @@ export class QmdSessionExporter {
         signal.throwIfAborted();
       }
     }
+
     for (const [sessionFile, state] of this.exportedSessionState) {
       if (!tracked.has(sessionFile) || !isPathInside(exportDir, state.target)) {
         lease.assertOwned();
         this.exportedSessionState.delete(sessionFile);
       }
     }
+    for (const [sessionFile, state] of this.exportedMultipartSessionState) {
+      if (
+        !tracked.has(sessionFile) ||
+        state.artifacts.some((artifact) => !isPathInside(exportDir, artifact.target))
+      ) {
+        lease.assertOwned();
+        this.exportedMultipartSessionState.delete(sessionFile);
+      }
+    }
+
     signal.throwIfAborted();
     lease.assertOwned();
     replaceQmdSessionArtifactMappings({
@@ -224,6 +314,165 @@ export class QmdSessionExporter {
       signal.throwIfAborted();
       log.warn(`failed to refresh qmd session artifact identity docids: ${String(err)}`);
     }
+  }
+
+  private buildSessionEntryOptions(corpusEntry: SessionTranscriptCorpusEntry) {
+    return {
+      generatedByDreamingNarrative: corpusEntry.generatedByDreamingNarrative === true,
+      generatedByCronRun: corpusEntry.generatedByCronRun === true,
+      ...(corpusEntry.transcriptSource === "sqlite" && corpusEntry.storePath
+        ? {
+            agentId: corpusEntry.agentId,
+            sessionId: corpusEntry.sessionId,
+            storePath: corpusEntry.storePath,
+          }
+        : {}),
+      ...(corpusEntry.sessionKey ? { sessionKey: corpusEntry.sessionKey } : {}),
+      ...(corpusEntry.updatedAtMs !== undefined ? { updatedAtMs: corpusEntry.updatedAtMs } : {}),
+      ...(corpusEntry.sessionKind ? { sessionKind: corpusEntry.sessionKind } : {}),
+    };
+  }
+
+  private async multipartArtifactsIntact(
+    exportRoot: QmdExportRoot,
+    state: ExportedMultipartSessionState,
+  ): Promise<boolean> {
+    for (const artifact of state.artifacts) {
+      if (artifact.targetRevision === null) {
+        return false;
+      }
+      const revision = await exportRoot
+        .stat(artifact.artifactPath)
+        .then(pathStatRevision)
+        .catch(() => null);
+      if (revision !== artifact.targetRevision) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private async exportMultipartSqliteSession(params: {
+    corpusEntry: SessionTranscriptCorpusEntry;
+    exportRoot: QmdExportRoot;
+    lease: PluginStateLeaseContext;
+    previous: ExportedMultipartSessionState | undefined;
+    revisionToken: string | null;
+  }): Promise<ExportedMultipartSessionState | null> {
+    const { corpusEntry, exportRoot, lease, previous, revisionToken } = params;
+    if (corpusEntry.transcriptSource !== "sqlite" || !corpusEntry.storePath) {
+      return null;
+    }
+    const sessionFile = corpusEntry.sessionFile;
+    const exportDir = this.config.dir;
+    const previousByPath = new Map(
+      previous?.artifacts.map((artifact) => [artifact.artifactPath, artifact]) ?? [],
+    );
+
+    for (let attempt = 0; attempt < QMD_SESSION_MULTIPART_MAX_ATTEMPTS; attempt += 1) {
+      const staged: Array<{
+        artifactPath: string;
+        stageName: string;
+        target: string;
+      }> = [];
+      const artifacts: ExportedMultipartArtifactState[] = [];
+      let mtimeMs = corpusEntry.updatedAtMs ?? 0;
+      try {
+        for await (const part of buildQmdSqliteSessionParts(sessionFile, {
+          agentId: corpusEntry.agentId,
+          sessionId: corpusEntry.sessionId,
+          storePath: corpusEntry.storePath,
+          ...(corpusEntry.sessionKey ? { sessionKey: corpusEntry.sessionKey } : {}),
+          ...(corpusEntry.updatedAtMs !== undefined
+            ? { updatedAtMs: corpusEntry.updatedAtMs }
+            : {}),
+          generatedByDreamingNarrative: corpusEntry.generatedByDreamingNarrative === true,
+          generatedByCronRun: corpusEntry.generatedByCronRun === true,
+          ...(corpusEntry.sessionKind ? { sessionKind: corpusEntry.sessionKind } : {}),
+          maxPartBytes: QMD_SESSION_PART_MAX_BYTES,
+        })) {
+          lease.signal.throwIfAborted();
+          mtimeMs = part.mtimeMs;
+          const artifactPath = this.multipartArtifactName(corpusEntry, part);
+          const target = path.join(exportDir, artifactPath);
+          const prior = previousByPath.get(artifactPath);
+          const currentRevision =
+            prior?.targetRevision !== null && prior?.targetRevision !== undefined
+              ? await exportRoot
+                  .stat(artifactPath)
+                  .then(pathStatRevision)
+                  .catch(() => null)
+              : null;
+          if (
+            prior &&
+            prior.targetRevision !== null &&
+            currentRevision === prior.targetRevision
+          ) {
+            artifacts.push({
+              artifactPath,
+              target,
+              targetRevision: prior.targetRevision,
+            });
+            continue;
+          }
+
+          const stageName = `.${artifactPath}.stage-${attempt + 1}`;
+          lease.assertOwned();
+          await exportRoot.write(stageName, renderSessionMarkdown(part), { encoding: "utf-8" });
+          staged.push({ artifactPath, stageName, target });
+          artifacts.push({ artifactPath, target, targetRevision: null });
+        }
+
+        for (const stagedArtifact of staged) {
+          lease.signal.throwIfAborted();
+          lease.assertOwned();
+          await exportRoot.remove(stagedArtifact.artifactPath).catch(() => undefined);
+          await fs.rename(
+            path.join(exportDir, stagedArtifact.stageName),
+            stagedArtifact.target,
+          );
+        }
+
+        const finalized: ExportedMultipartArtifactState[] = [];
+        for (const artifact of artifacts) {
+          lease.signal.throwIfAborted();
+          const targetRevision = await exportRoot
+            .stat(artifact.artifactPath)
+            .then(pathStatRevision)
+            .catch(() => null);
+          finalized.push({ ...artifact, targetRevision });
+        }
+        return {
+          artifacts: finalized,
+          mtimeMs,
+          revisionToken,
+        };
+      } catch (err) {
+        for (const stagedArtifact of staged) {
+          await exportRoot.remove(stagedArtifact.stageName).catch(() => undefined);
+        }
+        if (
+          err instanceof QmdSessionTranscriptGenerationChangedError &&
+          attempt + 1 < QMD_SESSION_MULTIPART_MAX_ATTEMPTS
+        ) {
+          log.debug(
+            `qmd session export generation changed for ${corpusEntry.sessionId}; retrying multipart export`,
+          );
+          continue;
+        }
+        throw err;
+      }
+    }
+    return null;
+  }
+
+  private multipartArtifactName(
+    corpusEntry: SessionTranscriptCorpusEntry,
+    part: QmdSqliteSessionPart,
+  ): string {
+    const partNumber = String(part.partIndex).padStart(6, "0");
+    const contentKey = part.hash.slice(0, 16);
+    return `${this.sessionExportStem(corpusEntry)}.part-${partNumber}.${contentKey}.md`;
   }
 
   private buildSessionArtifactMapping(
