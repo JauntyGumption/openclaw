@@ -2,7 +2,9 @@
  * Public SDK subpath for memory host QMD engine helpers.
  */
 export {
+  buildQmdSqliteSessionParts,
   buildSessionEntry,
+  QmdSessionTranscriptGenerationChangedError,
   checkQmdBinaryAvailability,
   deriveQmdScopeChannel,
   deriveQmdScopeChatType,
@@ -25,7 +27,9 @@ export {
   statSessionEntrySync,
 } from "../../packages/memory-host-sdk/src/engine-qmd.js";
 export type {
+  BuildQmdSqliteSessionPartsOptions,
   QmdQueryResult,
+  QmdSqliteSessionPart,
   SessionFileEntry,
   SessionTranscriptCorpusEntry,
   SessionTranscriptCorpusOptions,
