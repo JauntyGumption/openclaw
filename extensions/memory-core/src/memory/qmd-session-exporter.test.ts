@@ -4,16 +4,22 @@ import { withTempDir } from "openclaw/plugin-sdk/test-env";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  buildQmdSqliteSessionParts: vi.fn(),
   buildSessionEntry: vi.fn(),
   corpusEntries: vi.fn(),
   replaceArtifactMappings: vi.fn(),
+  statSessionEntrySync: vi.fn(),
 }));
 
 vi.mock("openclaw/plugin-sdk/memory-core-host-engine-qmd", () => ({
+  buildQmdSqliteSessionParts: mocks.buildQmdSqliteSessionParts,
   buildSessionEntry: mocks.buildSessionEntry,
   isSessionArchiveArtifactName: () => false,
   listSessionTranscriptCorpusEntriesForAgent: mocks.corpusEntries,
+  QmdSessionTranscriptGenerationChangedError: class QmdSessionTranscriptGenerationChangedError
+    extends Error {},
   resolveSessionIdentityForTranscriptFile: () => null,
+  statSessionEntrySync: mocks.statSessionEntrySync,
 }));
 
 vi.mock("../qmd-session-artifacts.js", () => ({
@@ -28,11 +34,45 @@ const createLease = () => ({
   signal: new AbortController().signal,
 });
 
+function smallSqliteState(sessionFile: string, size = 100) {
+  return {
+    absPath: sessionFile,
+    mtimeMs: 1,
+    path: "sessions/main/session-1.jsonl",
+    size,
+  };
+}
+
+function multipartPart(params: {
+  content: string;
+  hash: string;
+  partIndex: number;
+}) {
+  return {
+    absPath: "agent:main:session-1",
+    content: params.content,
+    hash: params.hash,
+    lineMap: [params.partIndex],
+    lineProvenance: [],
+    messageTimestampsMs: [1],
+    mtimeMs: 1,
+    partIndex: params.partIndex,
+    path: "sessions/main/session-1.jsonl",
+    sessionKind: "interactive" as const,
+    size: 16 * 1024 * 1024,
+  };
+}
+
 describe("QmdSessionExporter", () => {
   beforeEach(() => {
+    mocks.buildQmdSqliteSessionParts.mockReset();
     mocks.buildSessionEntry.mockReset();
     mocks.corpusEntries.mockReset();
     mocks.replaceArtifactMappings.mockReset();
+    mocks.statSessionEntrySync.mockReset();
+    mocks.statSessionEntrySync.mockImplementation((sessionFile: string) =>
+      smallSqliteState(sessionFile),
+    );
   });
 
   it("skips unchanged transcript parsing by canonical corpus revision", async () => {
@@ -136,6 +176,105 @@ describe("QmdSessionExporter", () => {
 
       expect(mocks.buildSessionEntry).toHaveBeenCalledTimes(3);
       await expect(fs.readFile(target, "utf8")).resolves.toContain("User: canonical");
+    });
+  });
+
+  it("exports large SQLite transcripts as multiple mapped artifacts and removes stale parts", async () => {
+    await withTempDir("qmd-session-exporter-", async (tempDir) => {
+      const exportDir = path.join(tempDir, "exports");
+      const corpusEntry = {
+        agentId: "main",
+        artifactKind: "active-session" as const,
+        contentRevision: "sqlite:10:16777216:10:1",
+        sessionFile: "agent:main:session-1",
+        sessionId: "session-1",
+        sessionKey: "agent:main:session-1",
+        storePath: path.join(tempDir, "sessions.json"),
+        transcriptSource: "sqlite" as const,
+        updatedAtMs: 1,
+      };
+      mocks.corpusEntries.mockImplementation(async () => [corpusEntry]);
+      mocks.statSessionEntrySync.mockImplementation((sessionFile: string) =>
+        smallSqliteState(sessionFile, 16 * 1024 * 1024),
+      );
+      mocks.buildQmdSqliteSessionParts.mockImplementation(async function* () {
+        yield multipartPart({
+          content: "User: first part",
+          hash: "aaaaaaaaaaaaaaaa1111111111111111",
+          partIndex: 1,
+        });
+        yield multipartPart({
+          content: "Assistant: old tail",
+          hash: "bbbbbbbbbbbbbbbb2222222222222222",
+          partIndex: 2,
+        });
+      });
+
+      const exporter = new QmdSessionExporter(
+        { collectionName: "sessions-main", dir: exportDir },
+        "main",
+        tempDir,
+        path.join(tempDir, "index.sqlite"),
+        (collection, artifactPath) => `qmd/${collection}/${artifactPath}`,
+      );
+      const lease = createLease();
+
+      await exporter.exportSessions(lease);
+
+      expect(mocks.buildSessionEntry).not.toHaveBeenCalled();
+      await expect(fs.readdir(exportDir)).resolves.toEqual([
+        "session-1.part-000001.aaaaaaaaaaaaaaaa.md",
+        "session-1.part-000002.bbbbbbbbbbbbbbbb.md",
+      ]);
+      expect(mocks.replaceArtifactMappings).toHaveBeenLastCalledWith({
+        collection: "sessions-main",
+        indexPath: path.join(tempDir, "index.sqlite"),
+        mappings: [
+          expect.objectContaining({
+            artifactPath: "session-1.part-000001.aaaaaaaaaaaaaaaa.md",
+            sessionId: "session-1",
+          }),
+          expect.objectContaining({
+            artifactPath: "session-1.part-000002.bbbbbbbbbbbbbbbb.md",
+            sessionId: "session-1",
+          }),
+        ],
+      });
+
+      corpusEntry.contentRevision = "sqlite:11:16777300:11:2";
+      mocks.buildQmdSqliteSessionParts.mockImplementation(async function* () {
+        yield multipartPart({
+          content: "User: first part",
+          hash: "aaaaaaaaaaaaaaaa1111111111111111",
+          partIndex: 1,
+        });
+        yield multipartPart({
+          content: "Assistant: new tail",
+          hash: "cccccccccccccccc3333333333333333",
+          partIndex: 2,
+        });
+      });
+
+      await exporter.exportSessions(lease);
+
+      await expect(fs.readdir(exportDir)).resolves.toEqual([
+        "session-1.part-000001.aaaaaaaaaaaaaaaa.md",
+        "session-1.part-000002.cccccccccccccccc.md",
+      ]);
+      expect(mocks.replaceArtifactMappings).toHaveBeenLastCalledWith({
+        collection: "sessions-main",
+        indexPath: path.join(tempDir, "index.sqlite"),
+        mappings: [
+          expect.objectContaining({
+            artifactPath: "session-1.part-000001.aaaaaaaaaaaaaaaa.md",
+            sessionId: "session-1",
+          }),
+          expect.objectContaining({
+            artifactPath: "session-1.part-000002.cccccccccccccccc.md",
+            sessionId: "session-1",
+          }),
+        ],
+      });
     });
   });
 });
