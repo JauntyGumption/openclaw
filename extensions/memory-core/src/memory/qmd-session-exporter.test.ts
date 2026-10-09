@@ -174,6 +174,72 @@ describe("QmdSessionExporter", () => {
     });
   });
 
+  it("skips multipart transcript traversal from a persisted manifest after restart", async () => {
+    await withTempDir("qmd-session-exporter-", async (tempDir) => {
+      const exportDir = path.join(tempDir, "exports");
+      const corpusEntry = {
+        agentId: "main",
+        artifactKind: "active-session" as const,
+        contentRevision: "sqlite:10:16777216:10:1",
+        sessionFile: "agent:main:session-1",
+        sessionId: "session-1",
+        sessionKey: "agent:main:session-1",
+        storePath: path.join(tempDir, "sessions.json"),
+        transcriptSource: "sqlite" as const,
+        updatedAtMs: 1,
+      };
+      mocks.corpusEntries.mockImplementation(async () => [corpusEntry]);
+      mocks.statSessionEntrySync.mockImplementation((sessionFile: string) =>
+        smallSqliteState(sessionFile, 16 * 1024 * 1024),
+      );
+      mocks.buildQmdSqliteSessionParts.mockImplementation(async function* () {
+        yield multipartPart({
+          content: "User: first part",
+          hash: "aaaaaaaaaaaaaaaa1111111111111111",
+          partIndex: 1,
+        });
+        yield multipartPart({
+          content: "Assistant: tail",
+          hash: "bbbbbbbbbbbbbbbb2222222222222222",
+          partIndex: 2,
+        });
+      });
+      const createExporter = () =>
+        new QmdSessionExporter(
+          { collectionName: "sessions-main", dir: exportDir },
+          "main",
+          tempDir,
+          path.join(tempDir, "index.sqlite"),
+          (collection, artifactPath) => `qmd/${collection}/${artifactPath}`,
+        );
+      const lease = createLease();
+
+      await createExporter().exportSessions(lease);
+      expect(mocks.buildQmdSqliteSessionParts).toHaveBeenCalledTimes(1);
+      await expect(
+        fs.readFile(path.join(exportDir, ".session-1.multipart.json"), "utf8"),
+      ).resolves.toContain(corpusEntry.contentRevision);
+
+      await createExporter().exportSessions(lease);
+
+      expect(mocks.buildQmdSqliteSessionParts).toHaveBeenCalledTimes(1);
+      expect(mocks.replaceArtifactMappings).toHaveBeenLastCalledWith({
+        collection: "sessions-main",
+        indexPath: path.join(tempDir, "index.sqlite"),
+        mappings: [
+          expect.objectContaining({
+            artifactPath: "session-1.part-000001.aaaaaaaaaaaaaaaa.md",
+            sessionId: "session-1",
+          }),
+          expect.objectContaining({
+            artifactPath: "session-1.part-000002.bbbbbbbbbbbbbbbb.md",
+            sessionId: "session-1",
+          }),
+        ],
+      });
+    });
+  });
+
   it("reuses intact multipart artifacts across exporter restarts", async () => {
     await withTempDir("qmd-session-exporter-", async (tempDir) => {
       const exportDir = path.join(tempDir, "exports");
