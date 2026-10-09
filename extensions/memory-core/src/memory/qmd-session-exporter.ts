@@ -64,6 +64,16 @@ type ExportedMultipartSessionState = {
   revisionToken: string | null;
 };
 
+type PersistedMultipartSessionManifest = {
+  artifacts: Array<{
+    artifactPath: string;
+    targetRevision: string;
+  }>;
+  mtimeMs: number;
+  revisionToken: string;
+  version: 1;
+};
+
 type QmdExportRoot = Awaited<ReturnType<typeof root>>;
 
 function buildSessionExportRevision(corpusEntry: SessionTranscriptCorpusEntry): string | null {
@@ -112,6 +122,7 @@ export class QmdSessionExporter {
     const corpusEntries = await listSessionTranscriptCorpusEntriesForAgent(this.agentId);
     signal.throwIfAborted();
     const keep = new Set<string>();
+    const manifestKeep = new Set<string>();
     const tracked = new Set<string>();
     const artifactMappings: QmdSessionArtifactMapping[] = [];
     const cutoff = this.config.retentionMs ? Date.now() - this.config.retentionMs : null;
@@ -131,7 +142,11 @@ export class QmdSessionExporter {
         sqliteState.size >= QMD_SESSION_MULTIPART_THRESHOLD_BYTES &&
         corpusEntry.storePath
       ) {
-        const previous = this.exportedMultipartSessionState.get(sessionFile);
+        const previous =
+          this.exportedMultipartSessionState.get(sessionFile) ??
+          (revisionToken
+            ? await this.loadMultipartManifest(corpusEntry, revisionToken, exportRoot)
+            : undefined);
         if (
           revisionToken &&
           previous?.revisionToken === revisionToken &&
@@ -142,6 +157,8 @@ export class QmdSessionExporter {
           }
           tracked.add(sessionFile);
           this.exportedSessionState.delete(sessionFile);
+          this.exportedMultipartSessionState.set(sessionFile, previous);
+          manifestKeep.add(path.join(exportDir, this.multipartManifestName(corpusEntry)));
           for (const artifact of previous.artifacts) {
             artifactMappings.push(
               this.buildSessionArtifactMapping(
@@ -172,6 +189,15 @@ export class QmdSessionExporter {
         tracked.add(sessionFile);
         this.exportedSessionState.delete(sessionFile);
         this.exportedMultipartSessionState.set(sessionFile, next);
+        if (revisionToken) {
+          await this.writeMultipartManifest(corpusEntry, next, exportRoot, lease).catch((err) => {
+            signal.throwIfAborted();
+            log.debug(
+              `failed to persist qmd multipart session manifest for ${corpusEntry.sessionId}: ${String(err)}`,
+            );
+          });
+          manifestKeep.add(path.join(exportDir, this.multipartManifestName(corpusEntry)));
+        }
         for (const artifact of next.artifacts) {
           artifactMappings.push(
             this.buildSessionArtifactMapping(
@@ -258,9 +284,20 @@ export class QmdSessionExporter {
     });
     signal.throwIfAborted();
     for (const name of exported) {
-      if (name.startsWith(".") && name.includes(".md.stage-")) {
+      if (
+        (name.startsWith(".") && name.includes(".md.stage-")) ||
+        name.endsWith(".multipart.json.stage")
+      ) {
         lease.assertOwned();
         await exportRoot.remove(name).catch(() => undefined);
+        continue;
+      }
+      if (name.endsWith(".multipart.json")) {
+        const full = path.join(exportDir, name);
+        if (!manifestKeep.has(full)) {
+          lease.assertOwned();
+          await exportRoot.remove(name).catch(() => undefined);
+        }
         continue;
       }
       if (!name.endsWith(".md")) {
@@ -486,6 +523,92 @@ export class QmdSessionExporter {
     const partNumber = String(part.partIndex).padStart(6, "0");
     const contentKey = part.hash.slice(0, 16);
     return `${this.sessionExportStem(corpusEntry)}.part-${partNumber}.${contentKey}.md`;
+  }
+
+  private multipartManifestName(corpusEntry: SessionTranscriptCorpusEntry): string {
+    return `.${this.sessionExportStem(corpusEntry)}.multipart.json`;
+  }
+
+  private async loadMultipartManifest(
+    corpusEntry: SessionTranscriptCorpusEntry,
+    revisionToken: string,
+    exportRoot: QmdExportRoot,
+  ): Promise<ExportedMultipartSessionState | undefined> {
+    const manifestName = this.multipartManifestName(corpusEntry);
+    const manifestPath = path.join(this.config.dir, manifestName);
+    try {
+      const parsed = JSON.parse(
+        await fs.readFile(manifestPath, "utf8"),
+      ) as Partial<PersistedMultipartSessionManifest>;
+      if (
+        parsed.version !== 1 ||
+        parsed.revisionToken !== revisionToken ||
+        typeof parsed.mtimeMs !== "number" ||
+        !Array.isArray(parsed.artifacts)
+      ) {
+        return undefined;
+      }
+      const artifacts: ExportedMultipartArtifactState[] = [];
+      const stem = `${this.sessionExportStem(corpusEntry)}.part-`;
+      for (const artifact of parsed.artifacts) {
+        if (
+          !artifact ||
+          typeof artifact.artifactPath !== "string" ||
+          typeof artifact.targetRevision !== "string" ||
+          path.basename(artifact.artifactPath) !== artifact.artifactPath ||
+          !artifact.artifactPath.startsWith(stem) ||
+          !artifact.artifactPath.endsWith(".md")
+        ) {
+          return undefined;
+        }
+        artifacts.push({
+          artifactPath: artifact.artifactPath,
+          target: path.join(this.config.dir, artifact.artifactPath),
+          targetRevision: artifact.targetRevision,
+        });
+      }
+      if (artifacts.length === 0) {
+        return undefined;
+      }
+      const state: ExportedMultipartSessionState = {
+        artifacts,
+        mtimeMs: parsed.mtimeMs,
+        revisionToken,
+      };
+      return (await this.multipartArtifactsIntact(exportRoot, state)) ? state : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async writeMultipartManifest(
+    corpusEntry: SessionTranscriptCorpusEntry,
+    state: ExportedMultipartSessionState,
+    exportRoot: QmdExportRoot,
+    lease: PluginStateLeaseContext,
+  ): Promise<void> {
+    if (!state.revisionToken || state.artifacts.some((artifact) => !artifact.targetRevision)) {
+      return;
+    }
+    const manifestName = this.multipartManifestName(corpusEntry);
+    const stageName = `${manifestName}.stage`;
+    const manifest: PersistedMultipartSessionManifest = {
+      artifacts: state.artifacts.map((artifact) => ({
+        artifactPath: artifact.artifactPath,
+        targetRevision: artifact.targetRevision as string,
+      })),
+      mtimeMs: state.mtimeMs,
+      revisionToken: state.revisionToken,
+      version: 1,
+    };
+    lease.assertOwned();
+    await exportRoot.write(stageName, `${JSON.stringify(manifest)}\n`, { encoding: "utf-8" });
+    lease.signal.throwIfAborted();
+    lease.assertOwned();
+    await fs.rename(
+      path.join(this.config.dir, stageName),
+      path.join(this.config.dir, manifestName),
+    );
   }
 
   private buildSessionArtifactMapping(
