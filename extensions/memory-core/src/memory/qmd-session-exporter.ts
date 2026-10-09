@@ -399,13 +399,10 @@ export class QmdSessionExporter {
           const artifactPath = this.multipartArtifactName(corpusEntry, part);
           const target = path.join(exportDir, artifactPath);
           const prior = previousByPath.get(artifactPath);
-          const currentRevision =
-            prior?.targetRevision !== null && prior?.targetRevision !== undefined
-              ? await exportRoot
-                  .stat(artifactPath)
-                  .then(pathStatRevision)
-                  .catch(() => null)
-              : null;
+          const currentRevision = await exportRoot
+            .stat(artifactPath)
+            .then(pathStatRevision)
+            .catch(() => null);
           if (prior && prior.targetRevision !== null && currentRevision === prior.targetRevision) {
             artifacts.push({
               artifactPath,
@@ -415,9 +412,25 @@ export class QmdSessionExporter {
             continue;
           }
 
+          const rendered = renderSessionMarkdown(part);
+          if (!prior && currentRevision !== null) {
+            const unchanged = await fs
+              .readFile(target, "utf8")
+              .then((existing) => existing === rendered)
+              .catch(() => false);
+            if (unchanged) {
+              artifacts.push({
+                artifactPath,
+                target,
+                targetRevision: currentRevision,
+              });
+              continue;
+            }
+          }
+
           const stageName = `.${artifactPath}.stage-${attempt + 1}`;
           lease.assertOwned();
-          await exportRoot.write(stageName, renderSessionMarkdown(part), { encoding: "utf-8" });
+          await exportRoot.write(stageName, rendered, { encoding: "utf-8" });
           staged.push({ artifactPath, stageName, target });
           artifacts.push({ artifactPath, target, targetRevision: null });
         }
