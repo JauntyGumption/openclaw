@@ -27,8 +27,8 @@ async function runWorker(): Promise<void> {
   try {
     const prepared =
       mode === "sync"
-        ? prepareSqliteReadOnlyLocationSyncInProcess(pathname)
-        : await prepareSqliteReadOnlyLocationInProcess(pathname);
+        ? prepareSqliteReadOnlyLocationSyncInProcess(pathname, { ownerPid: process.ppid })
+        : await prepareSqliteReadOnlyLocationInProcess(pathname, { ownerPid: process.ppid });
     process.stdout.write(JSON.stringify({ ok: true, location: prepared.location }));
   } catch (error) {
     process.exitCode = 1;
