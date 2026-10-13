@@ -43,7 +43,9 @@ async function verifyOpenClawDatabase(
   let database: import("node:sqlite").DatabaseSync | undefined;
   let result = await (async (): Promise<OpenClawDatabaseVerifyResult> => {
     try {
-      const prepared = await location.prepareSqliteReadOnlyLocationInProcess(target.path);
+      const prepared = await location.prepareSqliteReadOnlyLocationInProcess(target.path, {
+        ownerPid: process.ppid,
+      });
       cleanup = prepared.cleanup;
       database = sqlite.openNodeSqliteDatabase(prepared.location, {
         readOnly: true,
