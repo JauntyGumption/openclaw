@@ -1,6 +1,6 @@
 // Prepares consistent private SQLite read-only snapshots.
 import { execFile, spawnSync } from "node:child_process";
-import fs, { type BigIntStats } from "node:fs";
+import fs, { type BigIntStats, type Dirent } from "node:fs";
 import path from "node:path";
 import { sameFileIdentity } from "./fs-safe-advanced.js";
 import {
@@ -68,7 +68,7 @@ function isSqliteSnapshotOwnerAlive(ownerPid: number): boolean {
 }
 
 function cleanupStaleSqliteSnapshotDirectories(stagingRoot: string): void {
-  let entries: fs.Dirent[];
+  let entries: Dirent[];
   try {
     entries = fs.readdirSync(stagingRoot, { withFileTypes: true });
   } catch (error) {
