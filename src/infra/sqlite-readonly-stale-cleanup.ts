@@ -79,9 +79,7 @@ export function sqliteSnapshotStagingError(
       (typeof errcode === "number" && [13, 778, 1034, 1290].includes(errcode)) ||
       `${errorPath ?? ""}${path.sep}`.startsWith(`${tempDir}${path.sep}`)
     ) {
-      const message = `${
-        cause instanceof Error ? cause.message : String(cause)
-      }${
+      const message = `${cause instanceof Error ? cause.message : String(cause)}${
         typeof errcode === "number" ? ` (SQLite errcode=${errcode})` : ""
       }; snapshot staging root ${
         allocation ? tempDir : path.dirname(tempDir)

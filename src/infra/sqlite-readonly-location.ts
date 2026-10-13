@@ -362,7 +362,10 @@ async function createSqliteSnapshotStagingDirectory(ownerPid = process.pid): Pro
   const stagingRoot = resolvePrivateSqliteSnapshotStagingRoot();
   cleanupStaleSqliteSnapshotDirectories(stagingRoot);
   try {
-    return await createPrivateSqliteTempDirectory(stagingRoot, sqliteSnapshotStagingPrefix(ownerPid));
+    return await createPrivateSqliteTempDirectory(
+      stagingRoot,
+      sqliteSnapshotStagingPrefix(ownerPid),
+    );
   } catch (error) {
     throw sqliteSnapshotStagingError(stagingRoot, error, true);
   }
@@ -532,7 +535,12 @@ export function prepareSqliteReadOnlyLocationSyncInProcess(
       continue;
     }
     try {
-      return createStableReadOnlyCopyInTempDirectory(canonicalPath, journalMode, undefined, ownerPid);
+      return createStableReadOnlyCopyInTempDirectory(
+        canonicalPath,
+        journalMode,
+        undefined,
+        ownerPid,
+      );
     } catch (error) {
       if (!(error instanceof SqliteSourceChangedError)) {
         throw error;

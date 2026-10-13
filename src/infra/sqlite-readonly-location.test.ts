@@ -195,10 +195,7 @@ describe("prepareSqliteReadOnlyLocation", () => {
     const cacheRoot = tempDirs.make("openclaw-sqlite-snapshot-live-owner-");
     const stagingRoot = path.join(cacheRoot, "openclaw");
     fs.mkdirSync(stagingRoot, { mode: 0o700, recursive: true });
-    const liveDirectory = path.join(
-      stagingRoot,
-      `openclaw-sqlite-readonly-${process.pid}-active`,
-    );
+    const liveDirectory = path.join(stagingRoot, `openclaw-sqlite-readonly-${process.pid}-active`);
     fs.mkdirSync(liveDirectory, { mode: 0o700 });
     fs.writeFileSync(path.join(liveDirectory, "database.sqlite"), "active");
 
