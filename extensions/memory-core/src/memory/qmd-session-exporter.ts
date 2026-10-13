@@ -190,7 +190,7 @@ export class QmdSessionExporter {
         this.exportedSessionState.delete(sessionFile);
         this.exportedMultipartSessionState.set(sessionFile, next);
         if (revisionToken) {
-          await this.writeMultipartManifest(corpusEntry, next, exportRoot, lease).catch((err) => {
+          await this.writeMultipartManifest(corpusEntry, next, exportRoot, lease).catch((err: unknown) => {
             signal.throwIfAborted();
             log.debug(
               `failed to persist qmd multipart session manifest for ${corpusEntry.sessionId}: ${String(err)}`,
