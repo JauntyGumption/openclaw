@@ -147,12 +147,74 @@ describe("prepareSqliteReadOnlyLocation", () => {
       const prepared = await prepare(databasePath);
       try {
         expect(prepared.location.startsWith(`${cacheRoot}${path.sep}`)).toBe(true);
+        expect(path.basename(path.dirname(prepared.location))).toMatch(
+          new RegExp(`^openclaw-sqlite-readonly-${process.pid}-`),
+        );
         expect(fs.statSync(path.dirname(prepared.location)).mode & 0o777).toBe(0o700);
         const snapshot = new sqlite.DatabaseSync(prepared.location, { readOnly: true });
         expect(snapshot.prepare("SELECT value FROM probe").all()).toEqual([{ value: "cached" }]);
         snapshot.close();
       } finally {
         expect(prepared.cleanup()).toBe(true);
+      }
+    });
+  });
+
+  it("reaps an abandoned snapshot whose owner process is gone", async () => {
+    const cacheRoot = tempDirs.make("openclaw-sqlite-snapshot-stale-");
+    const stagingRoot = path.join(cacheRoot, "openclaw");
+    fs.mkdirSync(stagingRoot, { mode: 0o700, recursive: true });
+    const exited = spawnSync(process.execPath, ["--input-type=module", "-e", "void 0"], {
+      encoding: "utf8",
+    });
+    expect(exited.status, exited.stderr).toBe(0);
+    const staleDirectory = path.join(
+      stagingRoot,
+      `openclaw-sqlite-readonly-${exited.pid}-abandoned`,
+    );
+    fs.mkdirSync(staleDirectory, { mode: 0o700 });
+    fs.writeFileSync(path.join(staleDirectory, "database.sqlite"), "abandoned");
+
+    const sqlite = requireNodeSqlite();
+    const databasePath = createTempDatabasePath();
+    const database = new sqlite.DatabaseSync(databasePath);
+    database.exec("CREATE TABLE probe (value TEXT);");
+    database.close();
+
+    await withEnvAsync({ XDG_CACHE_HOME: cacheRoot }, async () => {
+      const prepared = await prepareSqliteReadOnlyLocationInProcess(databasePath);
+      try {
+        expect(fs.existsSync(staleDirectory)).toBe(false);
+      } finally {
+        expect(prepared.cleanup()).toBe(true);
+      }
+    });
+  });
+
+  it("preserves a snapshot directory owned by a live process", async () => {
+    const cacheRoot = tempDirs.make("openclaw-sqlite-snapshot-live-owner-");
+    const stagingRoot = path.join(cacheRoot, "openclaw");
+    fs.mkdirSync(stagingRoot, { mode: 0o700, recursive: true });
+    const liveDirectory = path.join(
+      stagingRoot,
+      `openclaw-sqlite-readonly-${process.pid}-active`,
+    );
+    fs.mkdirSync(liveDirectory, { mode: 0o700 });
+    fs.writeFileSync(path.join(liveDirectory, "database.sqlite"), "active");
+
+    const sqlite = requireNodeSqlite();
+    const databasePath = createTempDatabasePath();
+    const database = new sqlite.DatabaseSync(databasePath);
+    database.exec("CREATE TABLE probe (value TEXT);");
+    database.close();
+
+    await withEnvAsync({ XDG_CACHE_HOME: cacheRoot }, async () => {
+      const prepared = await prepareSqliteReadOnlyLocationInProcess(databasePath);
+      try {
+        expect(fs.existsSync(liveDirectory)).toBe(true);
+      } finally {
+        expect(prepared.cleanup()).toBe(true);
+        fs.rmSync(liveDirectory, { force: true, recursive: true });
       }
     });
   });
