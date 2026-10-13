@@ -16,7 +16,11 @@ import {
   resolvePrivateSqliteSnapshotStagingRoot,
 } from "./sqlite-private-directory.js";
 import {
+  adoptPreparedLocation,
   cleanupStaleSqliteSnapshotDirectories,
+  type PreparedSqliteReadOnlyLocation,
+  removeTempDirectory,
+  sqliteSnapshotStagingError,
   sqliteSnapshotStagingPrefix,
 } from "./sqlite-readonly-stale-cleanup.js";
 
@@ -28,9 +32,6 @@ const SQLITE_RESULT_CODE_MASK = 0xff;
 const SQLITE_JOURNAL_MAGIC = Buffer.from([0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7]);
 export const SQLITE_READONLY_CHILD_ARG = "--openclaw-sqlite-readonly-child";
 const SQLITE_READONLY_STDERR_TAIL_CHARS = 4_000;
-const pendingTempDirectoryCleanup = new Set<string>();
-let cleanupExitHandlerInstalled = false;
-
 type PinnedFile = {
   descriptor: number;
   identity: BigIntStats;
@@ -45,32 +46,9 @@ type SourceSidecars = {
 
 type SourceJournalMode = "empty" | "rollback" | "unknown" | "wal";
 
-type PreparedSqliteReadOnlyLocation = {
-  cleanup: () => boolean;
-  location: string;
-};
-
 type SqliteReadOnlyWorkerResult = { ok: true; location: string } | { ok: false; message: string };
 
 class SqliteSourceChangedError extends Error {}
-
-function sqliteSnapshotStagingError(tempDir: string, cause: unknown, allocation = false): unknown {
-  for (let depth = 0, error = cause; depth < 8 && error instanceof Error; depth += 1) {
-    const { code, errcode, path: errorPath }: NodeJS.ErrnoException & { errcode?: unknown } = error;
-    // SQLite FULL and IOERR_WRITE/FSYNC/DIR_FSYNC identify destination writes.
-    if (
-      allocation ||
-      ["ENOSPC", "EDQUOT"].includes(code ?? "") ||
-      (typeof errcode === "number" && [13, 778, 1034, 1290].includes(errcode)) ||
-      `${errorPath ?? ""}${path.sep}`.startsWith(`${tempDir}${path.sep}`)
-    ) {
-      const message = `${cause instanceof Error ? cause.message : String(cause)}${typeof errcode === "number" ? ` (SQLite errcode=${errcode})` : ""}; snapshot staging root ${allocation ? tempDir : path.dirname(tempDir)}: free disk space/quota or set XDG_CACHE_HOME to a writable filesystem`;
-      return new Error(message, { cause });
-    }
-    error = error.cause;
-  }
-  return cause;
-}
 
 function statIfPresent(pathname: string): BigIntStats | undefined {
   try {
@@ -285,47 +263,6 @@ function rollbackJournalReferencesSuperJournal(journalPath: string): boolean {
   } finally {
     fs.closeSync(descriptor);
   }
-}
-
-function removeTempDirectory(tempDir: string): boolean {
-  try {
-    fs.rmSync(tempDir, { force: true, maxRetries: 3, recursive: true, retryDelay: 20 });
-    pendingTempDirectoryCleanup.delete(tempDir);
-    return true;
-  } catch {
-    pendingTempDirectoryCleanup.add(tempDir);
-    if (!cleanupExitHandlerInstalled) {
-      cleanupExitHandlerInstalled = true;
-      process.once("exit", () => {
-        for (const pendingDir of pendingTempDirectoryCleanup) {
-          try {
-            fs.rmSync(pendingDir, { force: true, recursive: true });
-          } catch {
-            // The directory is private and remains registered until process teardown completes.
-          }
-        }
-      });
-    }
-    return false;
-  }
-}
-
-function adoptPreparedLocation(location: string): PreparedSqliteReadOnlyLocation {
-  const tempDir = path.dirname(location);
-  let active = true;
-  return {
-    location,
-    cleanup: () => {
-      if (!active) {
-        return true;
-      }
-      const removed = removeTempDirectory(tempDir);
-      if (removed) {
-        active = false;
-      }
-      return removed;
-    },
-  };
 }
 
 function recoverPrivateRollbackCopy(snapshotPath: string): void {
