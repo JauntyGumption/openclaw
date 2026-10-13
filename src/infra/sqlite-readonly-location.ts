@@ -1,6 +1,6 @@
 // Prepares consistent private SQLite read-only snapshots.
 import { execFile, spawnSync } from "node:child_process";
-import fs, { type BigIntStats, type Dirent } from "node:fs";
+import fs, { type BigIntStats } from "node:fs";
 import path from "node:path";
 import { sameFileIdentity } from "./fs-safe-advanced.js";
 import {
@@ -15,6 +15,10 @@ import {
   createPrivateSqliteTempDirectorySync,
   resolvePrivateSqliteSnapshotStagingRoot,
 } from "./sqlite-private-directory.js";
+import {
+  cleanupStaleSqliteSnapshotDirectories,
+  sqliteSnapshotStagingPrefix,
+} from "./sqlite-readonly-stale-cleanup.js";
 
 const MAX_SNAPSHOT_ATTEMPTS = 10;
 const COPY_BUFFER_BYTES = 1024 * 1024;
@@ -22,7 +26,6 @@ const SQLITE_HEADER_BYTES = 20;
 const SQLITE_READONLY_RESULT_CODE = 8;
 const SQLITE_RESULT_CODE_MASK = 0xff;
 const SQLITE_JOURNAL_MAGIC = Buffer.from([0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7]);
-const SQLITE_SNAPSHOT_STAGING_NAME_RE = /^openclaw-sqlite-readonly-(\d+)-/u;
 export const SQLITE_READONLY_CHILD_ARG = "--openclaw-sqlite-readonly-child";
 const SQLITE_READONLY_STDERR_TAIL_CHARS = 4_000;
 const pendingTempDirectoryCleanup = new Set<string>();
@@ -50,57 +53,6 @@ type PreparedSqliteReadOnlyLocation = {
 type SqliteReadOnlyWorkerResult = { ok: true; location: string } | { ok: false; message: string };
 
 class SqliteSourceChangedError extends Error {}
-
-function sqliteSnapshotStagingPrefix(ownerPid: number): string {
-  return `openclaw-sqlite-readonly-${ownerPid}-`;
-}
-
-function isSqliteSnapshotOwnerAlive(ownerPid: number): boolean {
-  if (!Number.isSafeInteger(ownerPid) || ownerPid <= 0) {
-    return true;
-  }
-  try {
-    process.kill(ownerPid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
-  }
-}
-
-function cleanupStaleSqliteSnapshotDirectories(stagingRoot: string): void {
-  let entries: Dirent[];
-  try {
-    entries = fs.readdirSync(stagingRoot, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return;
-    }
-    throw error;
-  }
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const match = SQLITE_SNAPSHOT_STAGING_NAME_RE.exec(entry.name);
-    if (!match) {
-      continue;
-    }
-    const ownerPid = Number.parseInt(match[1] ?? "", 10);
-    if (isSqliteSnapshotOwnerAlive(ownerPid)) {
-      continue;
-    }
-    const staleDirectory = path.join(stagingRoot, entry.name);
-    try {
-      fs.rmSync(staleDirectory, { force: true, maxRetries: 3, recursive: true, retryDelay: 20 });
-    } catch (error) {
-      throw new Error(
-        `Unable to remove stale SQLite read-only snapshot ${staleDirectory}; refusing to allocate another snapshot.`,
-        { cause: error },
-      );
-    }
-  }
-}
 
 function sqliteSnapshotStagingError(tempDir: string, cause: unknown, allocation = false): unknown {
   for (let depth = 0, error = cause; depth < 8 && error instanceof Error; depth += 1) {
