@@ -22,7 +22,7 @@ const SQLITE_HEADER_BYTES = 20;
 const SQLITE_READONLY_RESULT_CODE = 8;
 const SQLITE_RESULT_CODE_MASK = 0xff;
 const SQLITE_JOURNAL_MAGIC = Buffer.from([0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7]);
-const SQLITE_SNAPSHOT_STAGING_PREFIX = `openclaw-sqlite-readonly-${process.pid}-`;
+const SQLITE_SNAPSHOT_STAGING_NAME_RE = /^openclaw-sqlite-readonly-(\\d+)-/u;
 export const SQLITE_READONLY_CHILD_ARG = "--openclaw-sqlite-readonly-child";
 const SQLITE_READONLY_STDERR_TAIL_CHARS = 4_000;
 const pendingTempDirectoryCleanup = new Set<string>();
@@ -50,6 +50,57 @@ type PreparedSqliteReadOnlyLocation = {
 type SqliteReadOnlyWorkerResult = { ok: true; location: string } | { ok: false; message: string };
 
 class SqliteSourceChangedError extends Error {}
+
+function sqliteSnapshotStagingPrefix(ownerPid: number): string {
+  return `openclaw-sqlite-readonly-${ownerPid}-`;
+}
+
+function isSqliteSnapshotOwnerAlive(ownerPid: number): boolean {
+  if (!Number.isSafeInteger(ownerPid) || ownerPid <= 0) {
+    return true;
+  }
+  try {
+    process.kill(ownerPid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+function cleanupStaleSqliteSnapshotDirectories(stagingRoot: string): void {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(stagingRoot, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const match = SQLITE_SNAPSHOT_STAGING_NAME_RE.exec(entry.name);
+    if (!match) {
+      continue;
+    }
+    const ownerPid = Number.parseInt(match[1] ?? "", 10);
+    if (isSqliteSnapshotOwnerAlive(ownerPid)) {
+      continue;
+    }
+    const staleDirectory = path.join(stagingRoot, entry.name);
+    try {
+      fs.rmSync(staleDirectory, { force: true, maxRetries: 3, recursive: true, retryDelay: 20 });
+    } catch (error) {
+      throw new Error(
+        `Unable to remove stale SQLite read-only snapshot ${staleDirectory}; refusing to allocate another snapshot.`,
+        { cause: error },
+      );
+    }
+  }
+}
 
 function sqliteSnapshotStagingError(tempDir: string, cause: unknown, allocation = false): unknown {
   for (let depth = 0, error = cause; depth < 8 && error instanceof Error; depth += 1) {
@@ -351,11 +402,18 @@ function createStableReadOnlyCopyInTempDirectory(
   pathname: string,
   journalMode: Exclude<SourceJournalMode, "unknown">,
   existingTempDir?: string,
+  ownerPid = process.pid,
 ): PreparedSqliteReadOnlyLocation {
   let tempDir = existingTempDir;
   const stagingRoot = tempDir ? path.dirname(tempDir) : resolvePrivateSqliteSnapshotStagingRoot();
+  if (!tempDir) {
+    cleanupStaleSqliteSnapshotDirectories(stagingRoot);
+  }
   try {
-    tempDir ??= createPrivateSqliteTempDirectorySync(stagingRoot, SQLITE_SNAPSHOT_STAGING_PREFIX);
+    tempDir ??= createPrivateSqliteTempDirectorySync(
+      stagingRoot,
+      sqliteSnapshotStagingPrefix(ownerPid),
+    );
     const snapshotPath = path.join(tempDir, "database.sqlite");
     const firstPath = path.join(tempDir, "first");
     const secondPath = path.join(tempDir, "second");
@@ -411,10 +469,11 @@ function createStableReadOnlyCopyInTempDirectory(
   }
 }
 
-async function createSqliteSnapshotStagingDirectory(): Promise<string> {
+async function createSqliteSnapshotStagingDirectory(ownerPid = process.pid): Promise<string> {
   const stagingRoot = resolvePrivateSqliteSnapshotStagingRoot();
+  cleanupStaleSqliteSnapshotDirectories(stagingRoot);
   try {
-    return await createPrivateSqliteTempDirectory(stagingRoot, SQLITE_SNAPSHOT_STAGING_PREFIX);
+    return await createPrivateSqliteTempDirectory(stagingRoot, sqliteSnapshotStagingPrefix(ownerPid));
   } catch (error) {
     throw sqliteSnapshotStagingError(stagingRoot, error, true);
   }
@@ -423,15 +482,17 @@ async function createSqliteSnapshotStagingDirectory(): Promise<string> {
 async function createStableReadOnlyCopy(
   pathname: string,
   journalMode: Exclude<SourceJournalMode, "unknown">,
+  ownerPid = process.pid,
 ): Promise<PreparedSqliteReadOnlyLocation> {
-  const tempDir = await createSqliteSnapshotStagingDirectory();
-  return createStableReadOnlyCopyInTempDirectory(pathname, journalMode, tempDir);
+  const tempDir = await createSqliteSnapshotStagingDirectory(ownerPid);
+  return createStableReadOnlyCopyInTempDirectory(pathname, journalMode, tempDir, ownerPid);
 }
 
 async function createOnlineReadOnlyBackup(
   pathname: string,
+  ownerPid = process.pid,
 ): Promise<PreparedSqliteReadOnlyLocation> {
-  const tempDir = await createSqliteSnapshotStagingDirectory();
+  const tempDir = await createSqliteSnapshotStagingDirectory(ownerPid);
   const snapshotPath = path.join(tempDir, "database.sqlite");
   const sqlite = requireNodeSqlite();
   try {
@@ -477,8 +538,10 @@ async function createOnlineReadOnlyBackup(
  */
 export async function prepareSqliteReadOnlyLocationInProcess(
   pathname: string,
+  options: { ownerPid?: number } = {},
 ): Promise<PreparedSqliteReadOnlyLocation> {
   const canonicalPath = fs.realpathSync.native(pathname);
+  const ownerPid = options.ownerPid ?? process.pid;
   let lastChange: Error | undefined;
   for (let attempt = 0; attempt < MAX_SNAPSHOT_ATTEMPTS; attempt += 1) {
     let journalMode: ReturnType<typeof readSourceJournalMode>;
@@ -493,7 +556,7 @@ export async function prepareSqliteReadOnlyLocationInProcess(
     }
     if (journalMode === "empty") {
       try {
-        return await createStableReadOnlyCopy(canonicalPath, journalMode);
+        return await createStableReadOnlyCopy(canonicalPath, journalMode, ownerPid);
       } catch (error) {
         if (!(error instanceof SqliteSourceChangedError)) {
           throw error;
@@ -505,7 +568,7 @@ export async function prepareSqliteReadOnlyLocationInProcess(
     const sidecars = readSourceSidecars(canonicalPath);
     if (journalMode !== "wal" || (sidecars.wal && sidecars.shm)) {
       try {
-        return await createOnlineReadOnlyBackup(canonicalPath);
+        return await createOnlineReadOnlyBackup(canonicalPath, ownerPid);
       } catch (error) {
         // A writer can add or remove sidecars before SQLite opens. Retry
         // incomplete WAL state or rollback crash residue through private copy.
@@ -525,7 +588,7 @@ export async function prepareSqliteReadOnlyLocationInProcess(
             throw error;
           }
           try {
-            return await createStableReadOnlyCopy(canonicalPath, "rollback");
+            return await createStableReadOnlyCopy(canonicalPath, "rollback", ownerPid);
           } catch (copyError) {
             if (!(copyError instanceof SqliteSourceChangedError)) {
               throw copyError;
@@ -542,7 +605,7 @@ export async function prepareSqliteReadOnlyLocationInProcess(
       }
     }
     try {
-      return await createStableReadOnlyCopy(canonicalPath, "wal");
+      return await createStableReadOnlyCopy(canonicalPath, "wal", ownerPid);
     } catch (error) {
       if (!(error instanceof SqliteSourceChangedError)) {
         throw error;
@@ -557,8 +620,10 @@ export async function prepareSqliteReadOnlyLocationInProcess(
 
 export function prepareSqliteReadOnlyLocationSyncInProcess(
   pathname: string,
+  options: { ownerPid?: number } = {},
 ): PreparedSqliteReadOnlyLocation {
   const canonicalPath = fs.realpathSync.native(pathname);
+  const ownerPid = options.ownerPid ?? process.pid;
   let lastChange: Error | undefined;
   for (let attempt = 0; attempt < MAX_SNAPSHOT_ATTEMPTS; attempt += 1) {
     let journalMode: SourceJournalMode;
@@ -578,7 +643,7 @@ export function prepareSqliteReadOnlyLocationSyncInProcess(
       continue;
     }
     try {
-      return createStableReadOnlyCopyInTempDirectory(canonicalPath, journalMode);
+      return createStableReadOnlyCopyInTempDirectory(canonicalPath, journalMode, undefined, ownerPid);
     } catch (error) {
       if (!(error instanceof SqliteSourceChangedError)) {
         throw error;
